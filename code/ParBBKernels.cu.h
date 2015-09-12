@@ -24,16 +24,16 @@ class MyInt4 {
     int x; int y; int z; int w;
 
     __device__ __host__ inline MyInt4() {
-        x = 0; y = 0; z = 0; w = 0; 
+        x = 0; y = 0; z = 0; w = 0;
     }
     __device__ __host__ inline MyInt4(const int& a, const int& b, const int& c, const int& d) {
-        x = a; y = b; z = c; w = d; 
+        x = a; y = b; z = c; w = d;
     }
-    __device__ __host__ inline MyInt4(const MyInt4& i4) { 
-        x = i4.x; y = i4.y; z = i4.z; w = i4.w; 
+    __device__ __host__ inline MyInt4(const MyInt4& i4) {
+        x = i4.x; y = i4.y; z = i4.z; w = i4.w;
     }
     volatile __device__ __host__ inline MyInt4& operator=(const MyInt4& i4) volatile {
-        x = i4.x; y = i4.y; z = i4.z; w = i4.w; 
+        x = i4.x; y = i4.y; z = i4.z; w = i4.w;
         return *this;
     }
     __device__ __host__ inline int selInc(int i) {
@@ -42,16 +42,16 @@ class MyInt4 {
                (i == 2) ? ++z : ++w;
     }
     __device__ __host__ inline void zeroOut() {
-        x = y = z = w = 0; 
+        x = y = z = w = 0;
     }
     __device__ __host__ inline void set(const volatile MyInt4& i4) {
-        x = i4.x; y = i4.y; z = i4.z; w = i4.w; 
+        x = i4.x; y = i4.y; z = i4.z; w = i4.w;
     }
     __host__ inline void selSub(int i, int val) {
         if     (i==0) { x -= val; }
         else if(i==1) { y -= val; }
         else if(i==2) { z -= val; }
-        else          { w -= val; } 
+        else          { w -= val; }
     }
 };
 
@@ -61,17 +61,17 @@ class MyInt8 {
     int x; int y; int z; int w;
 
     __device__ __host__ inline MyInt8() {
-        a = b = c = d = x = y = z = w = 0; 
+        a = b = c = d = x = y = z = w = 0;
     }
     __device__ __host__ inline MyInt8(const int& v1, const int& v2, const int& v3, const int& v4,
                                       const int& v5, const int& v6, const int& v7, const int& v8) {
-        a = v1; b = v2; c = v3; d = v4; x = v5; y = v6; z = v7; w = v8; 
+        a = v1; b = v2; c = v3; d = v4; x = v5; y = v6; z = v7; w = v8;
     }
-    __device__ __host__ inline MyInt8(const MyInt8& i8) { 
-        a = i8.a; b = i8.b; c = i8.c; d = i8.d; x = i8.x; y = i8.y; z = i8.z; w = i8.w; 
+    __device__ __host__ inline MyInt8(const MyInt8& i8) {
+        a = i8.a; b = i8.b; c = i8.c; d = i8.d; x = i8.x; y = i8.y; z = i8.z; w = i8.w;
     }
     volatile __device__ __host__ inline MyInt8& operator=(const MyInt8& i8) volatile {
-        a = i8.a; b = i8.b; c = i8.c; d = i8.d; x = i8.x; y = i8.y; z = i8.z; w = i8.w; 
+        a = i8.a; b = i8.b; c = i8.c; d = i8.d; x = i8.x; y = i8.y; z = i8.z; w = i8.w;
         return *this;
     }
     __device__ __host__ inline int selInc(int i) {
@@ -79,10 +79,10 @@ class MyInt8 {
                (i == 4) ? ++x : (i == 5) ? ++y : (i == 6) ? ++z : ++w;
     }
     __device__ __host__ inline void zeroOut() {
-        a = b = c = d = x = y = z = w = 0; 
+        a = b = c = d = x = y = z = w = 0;
     }
     __device__ __host__ inline void set(const volatile MyInt8& i8) {
-        a = i8.a; b = i8.b; c = i8.c; d = i8.d; x = i8.x; y = i8.y; z = i8.z; w = i8.w; 
+        a = i8.a; b = i8.b; c = i8.c; d = i8.d; x = i8.x; y = i8.y; z = i8.z; w = i8.w;
     }
     __host__ inline void selSub(int i, int val) {
         if     (i==0) { a -= val; }
@@ -92,37 +92,37 @@ class MyInt8 {
         else if(i==4) { x -= val; }
         else if(i==5) { y -= val; }
         else if(i==6) { z -= val; }
-        else          { w -= val; } 
+        else          { w -= val; }
     }
 };
 
 class MsspOp {
   public:
     typedef MyInt4 BaseType;
-    static __device__ inline MyInt4 identity() { return MyInt4(0,0,0,0); }  
-    static __device__ inline MyInt4 apply(volatile MyInt4& t1, volatile MyInt4& t2) { 
+    static __device__ inline MyInt4 identity() { return MyInt4(0,0,0,0); }
+    static __device__ inline MyInt4 apply(volatile MyInt4& t1, volatile MyInt4& t2) {
         int mss = max(t1.x, max(t2.x,t1.z+t2.y));
         int mis = max(t1.y, t1.w+t2.y);
         int mcs = max(t2.z, t1.z+t2.w);
         int t   = t1.w + t2.w;
-        return MyInt4(mss, mis, mcs, t); 
+        return MyInt4(mss, mis, mcs, t);
     }
 };
 
 class AddMyInt4 {
   public:
-    static __device__ inline MyInt4 identity() { return MyInt4(0,0,0,0); }  
-    static __device__ inline MyInt4 apply(volatile MyInt4& t1, volatile MyInt4& t2) { 
-        return MyInt4(t1.x+t2.x, t1.y+t2.y, t1.z+t2.z, t1.w+t2.w); 
+    static __device__ inline MyInt4 identity() { return MyInt4(0,0,0,0); }
+    static __device__ inline MyInt4 apply(volatile MyInt4& t1, volatile MyInt4& t2) {
+        return MyInt4(t1.x+t2.x, t1.y+t2.y, t1.z+t2.z, t1.w+t2.w);
     }
 };
 
 class AddMyInt8 {
   public:
-    static __device__ inline MyInt8 identity() { return MyInt8(0,0,0,0,0,0,0,0); }  
-    static __device__ inline MyInt8 apply(volatile MyInt8& t1, volatile MyInt8& t2) { 
+    static __device__ inline MyInt8 identity() { return MyInt8(0,0,0,0,0,0,0,0); }
+    static __device__ inline MyInt8 apply(volatile MyInt8& t1, volatile MyInt8& t2) {
         return MyInt8(  t1.a+t2.a, t1.b+t2.b, t1.c+t2.c, t1.d+t2.d,
-                        t1.x+t2.x, t1.y+t2.y, t1.z+t2.z, t1.w+t2.w); 
+                        t1.x+t2.x, t1.y+t2.y, t1.z+t2.z, t1.w+t2.w);
     }
 };
 
@@ -133,11 +133,11 @@ class LessThan {
     typedef float InType;
     typedef int   OutType;
     static const float padelm = 0.99;
-    static __host__ __device__ inline float identity() { return 0.0; }  
+    static __host__ __device__ inline float identity() { return 0.0; }
     static __host__ __device__ inline int   apply(volatile float t) {
         return (t < 0.5) ? 1 : 0;
     }
-};    
+};
 
 class Mod4 {
   public:
@@ -152,10 +152,10 @@ class Mod4 {
         return t & 3;
     }
     static __device__ inline void incWithAccumDiff( MyInt4& acc,
-                                                    int*    arrtmp, 
-                                                    MyInt4* blk_beg, 
-                                                    MyInt4* blk_prv, 
-                                                    MyInt4* blk_end 
+                                                    int*    arrtmp,
+                                                    MyInt4* blk_beg,
+                                                    MyInt4* blk_prv,
+                                                    MyInt4* blk_end
     ) {
         int beg_blk, tmp_diff = 0;
 
@@ -172,7 +172,7 @@ class Mod4 {
         beg_blk   = (blockIdx.x > 0) * blk_beg->z;
         acc.z    += tmp_diff + (threadIdx.x > 0) * (blk_prv->z - beg_blk);
         arrtmp[2] = blk_end->z - beg_blk;
-        tmp_diff += arrtmp[2];        
+        tmp_diff += arrtmp[2];
 
         beg_blk   = (blockIdx.x > 0) * blk_beg->w;
         acc.w    += tmp_diff + (threadIdx.x > 0) * (blk_prv->w - beg_blk);
@@ -193,10 +193,10 @@ class Mod8 {
         return t & 7;
     }
     static __device__ inline void incWithAccumDiff( MyInt8& acc,
-                                                    int*    arrtmp, 
-                                                    MyInt8* blk_beg, 
-                                                    MyInt8* blk_prv, 
-                                                    MyInt8* blk_end 
+                                                    int*    arrtmp,
+                                                    MyInt8* blk_beg,
+                                                    MyInt8* blk_prv,
+                                                    MyInt8* blk_end
     ) {
         int beg_blk, tmp_diff = 0;
 
@@ -213,7 +213,7 @@ class Mod8 {
         beg_blk   = (blockIdx.x > 0) * blk_beg->c;
         acc.c    += tmp_diff + (threadIdx.x > 0) * (blk_prv->c - beg_blk);
         arrtmp[2] = blk_end->c - beg_blk;
-        tmp_diff += arrtmp[2];        
+        tmp_diff += arrtmp[2];
 
         beg_blk   = (blockIdx.x > 0) * blk_beg->d;
         acc.d    += tmp_diff + (threadIdx.x > 0) * (blk_prv->d - beg_blk);
@@ -233,7 +233,7 @@ class Mod8 {
         beg_blk   = (blockIdx.x > 0) * blk_beg->z;
         acc.z    += tmp_diff + (threadIdx.x > 0) * (blk_prv->z - beg_blk);
         arrtmp[6] = blk_end->z - beg_blk;
-        tmp_diff += arrtmp[6];        
+        tmp_diff += arrtmp[6];
 
         beg_blk   = (blockIdx.x > 0) * blk_beg->w;
         acc.w    += tmp_diff + (threadIdx.x > 0) * (blk_prv->w - beg_blk);
@@ -245,7 +245,7 @@ class Mod8 {
 
 class AddInt4Opt {
   public:
-    static __device__ inline int identity() { return 0; }  
+    static __device__ inline int identity() { return 0; }
     static __device__ inline int apply(volatile int& t1, volatile int& t2) {
         int t11 = t1, t22 = t2, t = 0, res = 0;
         #pragma unroll
@@ -307,7 +307,7 @@ T scanIncBlock(volatile T* ptr, const unsigned int idx) {
 
     // place the end-of-warp results in
     //   the first warp. This works because
-    //   warp size = 32, and 
+    //   warp size = 32, and
     //   max block size = 32^2 = 1024
     if (lane == 31) { ptr[warpid] = const_cast<T&>(ptr[idx]); }
     __syncthreads();
@@ -324,7 +324,7 @@ T scanIncBlock(volatile T* ptr, const unsigned int idx) {
 }
 
 template<class OP, class T>
-__global__ void 
+__global__ void
 scanIncKernel(T* d_in, T* d_out, unsigned int d_size) {
     extern __shared__ char sh_mem1[];
     volatile T* sh_memT = (volatile T*)sh_mem1;
@@ -334,7 +334,7 @@ scanIncKernel(T* d_in, T* d_out, unsigned int d_size) {
     sh_memT[tid] = el;
     __syncthreads();
     T res   = scanIncBlock < OP, T >(sh_memT, tid);
-    if (gid < d_size) d_out [gid] = res; 
+    if (gid < d_size) d_out [gid] = res;
 }
 
 
@@ -343,28 +343,28 @@ scanIncKernel(T* d_in, T* d_out, unsigned int d_size) {
 /***********************************************************/
 
 template<class T>
-__global__ void 
+__global__ void
 copyEndOfBlockKernel(T* d_in, T* d_out, unsigned int d_out_size) {
     const unsigned int gid = blockIdx.x*blockDim.x + threadIdx.x;
-    
+
     if(gid < d_out_size)
         d_out[gid] = d_in[ blockDim.x*(gid+1) - 1];
 }
 
 template<class OP, class T>
-__global__ void 
+__global__ void
 distributeEndBlock(T* d_in, T* d_out, unsigned int d_size) {
     const unsigned int gid = blockIdx.x*blockDim.x + threadIdx.x;
-    
+
     if(gid < d_size && blockIdx.x > 0)
         d_out[gid] = OP::apply(d_out[gid],d_in[blockIdx.x-1]);
 }
 
 template<class T>
-__global__ void 
+__global__ void
 shiftRightByOne(T* d_in, T* d_out, T ne, unsigned int d_size) {
     const unsigned int gid = blockIdx.x*blockDim.x + threadIdx.x;
-    
+
     if      (gid == 0)      d_out[gid] = ne;
     else if (gid < d_size)  d_out[gid] = d_in[gid-1];
 }
@@ -421,8 +421,8 @@ T sgmScanIncBlock(volatile T* ptr, volatile F* flg, const unsigned int idx) {
 
     // 2a: the last value is the correct partial result
     T warp_total = const_cast<T&>(ptr[warplst]);
-    
-    // 2b: warp_flag is the OR-reduction of the flags 
+
+    // 2b: warp_flag is the OR-reduction of the flags
     //     in a warp, and is computed indirectly from
     //     the mindex in hd[]
     bool warp_flag = flg[warplst]!=0 || !warp_is_open;
@@ -434,12 +434,12 @@ T sgmScanIncBlock(volatile T* ptr, volatile F* flg, const unsigned int idx) {
     //     in the first warp. Note that all fit in the first
     //     warp because warp = 32 and max block size is 32^2
     if (lane == 31) {
-        ptr[warpid] = warp_total; //ptr[idx]; 
+        ptr[warpid] = warp_total; //ptr[idx];
         flg[warpid] = warp_flag;
     }
     __syncthreads();
 
-    // 
+    //
     if (warpid == 0) sgmScanIncWarp<OP,T>(ptr, flg, idx);
     __syncthreads();
 
@@ -450,21 +450,21 @@ T sgmScanIncBlock(volatile T* ptr, volatile F* flg, const unsigned int idx) {
 }
 
 template<class OP, class T>
-__global__ void 
-sgmScanIncKernel(T* d_in, int* flags, T* d_out, 
+__global__ void
+sgmScanIncKernel(T* d_in, int* flags, T* d_out,
                           int* f_rec, T* d_rec, unsigned int d_size) {
     extern __shared__ char sh_mem[];
     volatile T*   vals_sh = (volatile T*)sh_mem;
     volatile int* flag_sh = (int*) (vals_sh + blockDim.x);
     const unsigned int tid = threadIdx.x;
     const unsigned int gid = blockIdx.x*blockDim.x + tid;
-    int fl;   
+    int fl;
     if (gid < d_size) { vals_sh[tid] = d_in[gid];      fl = flags[gid]; }
     else              { vals_sh[tid] = OP::identity(); fl = 0;          }
     flag_sh[tid] = fl;
     __syncthreads();
     T res = sgmScanIncBlock <OP, T>(vals_sh, flag_sh, tid);
-    if (gid < d_size) d_out [gid] = res; 
+    if (gid < d_size) d_out [gid] = res;
 
     // set the flags and data for the recursive step!
     if(tid == 0)  { f_rec[blockIdx.x] = 0; }
@@ -474,10 +474,10 @@ sgmScanIncKernel(T* d_in, int* flags, T* d_out,
 }
 
 template<class OP, class T>
-__global__ void 
+__global__ void
 sgmDistributeEndBlock(T* d_rec_in, T* d_out, int* f_inds, unsigned int d_size) {
     const unsigned int gid = blockIdx.x*blockDim.x + threadIdx.x;
-    
+
     if(gid < d_size && blockIdx.x > 0) {
         if(f_inds[gid] == 0)
             d_out[gid] = OP::apply(d_out[gid], d_rec_in[blockIdx.x-1]);
@@ -488,7 +488,7 @@ sgmDistributeEndBlock(T* d_rec_in, T* d_out, int* f_inds, unsigned int d_size) {
 ////////////////////////////////////////
 
 template<class T>
-__global__ void 
+__global__ void
 sgmShiftRightByOne(T* d_in, int*flags, T* d_out, T ne, unsigned int d_size) {
     const unsigned int gid = blockIdx.x*blockDim.x + threadIdx.x;
     if(gid < d_size) {
@@ -498,7 +498,7 @@ sgmShiftRightByOne(T* d_in, int*flags, T* d_out, T ne, unsigned int d_size) {
 }
 
 
-__global__ void 
+__global__ void
 trivial_map(int* inp_d, MyInt4* inp_lift, int inp_size) {
     const unsigned int gid = blockIdx.x*blockDim.x + threadIdx.x;
     if(gid < inp_size) {
@@ -509,7 +509,7 @@ trivial_map(int* inp_d, MyInt4* inp_lift, int inp_size) {
     }
 }
 
-__global__ void 
+__global__ void
 mult_pairs(int* mat_inds, float* mat_vals, float* vct, int tot_size, float* tmp_pairs) {
     const unsigned int gid = blockIdx.x*blockDim.x + threadIdx.x;
     if(gid < tot_size) {
@@ -522,7 +522,7 @@ write_lastsgm(float* tmp_scan, int* tmp_inds, int* flags_d, int tot_size, float*
     const unsigned int gid = blockIdx.x*blockDim.x + threadIdx.x;
     if(gid < tot_size) {
         if ( (gid == (tot_size-1)) || (flags_d[gid+1] != 0) )
-            vct_d[tmp_inds[gid]-1] = tmp_scan[gid]; 
+            vct_d[tmp_inds[gid]-1] = tmp_scan[gid];
     }
 }
 
@@ -533,7 +533,7 @@ write_lastsgm(float* tmp_scan, int* tmp_inds, int* flags_d, int tot_size, float*
 /*** MAP   Kernel ***/
 /********************/
 template<class MapLambda>
-__global__ void 
+__global__ void
 mapKernel(typename MapLambda::InType* d_in, typename MapLambda::OutType* d_out, unsigned int d_size) {
     const unsigned int gid = blockIdx.x*blockDim.x + threadIdx.x;
     if(gid < d_size) {
@@ -542,8 +542,8 @@ mapKernel(typename MapLambda::InType* d_in, typename MapLambda::OutType* d_out, 
 }
 
 template<class MapLambda>
-__global__ void 
-mapChunkKernel( typename MapLambda::InType*  d_in, 
+__global__ void
+mapChunkKernel( typename MapLambda::InType*  d_in,
                 int*                         d_out,
                 int*                         d_out_chunk,
                 const unsigned int           d_height,
@@ -555,7 +555,7 @@ mapChunkKernel( typename MapLambda::InType*  d_in,
         for (i = 0; i < d_width; i++, gid += d_height) {
             int res    = MapLambda::apply(d_in[gid]);
             d_out[gid] = res;
-            acc       += res; 
+            acc       += res;
         }
         gid = blockIdx.x*blockDim.x + threadIdx.x;
         d_out_chunk[gid] = acc;
@@ -564,20 +564,20 @@ mapChunkKernel( typename MapLambda::InType*  d_in,
 
 template<class MapLambda>
 __global__ void
-mapVctKernel(   typename MapLambda::InType*  d_in, 
+mapVctKernel(   typename MapLambda::InType*  d_in,
                 typename MapLambda::OutType* d_out,
                 typename MapLambda::ExpType* d_out_chunk,
                          const unsigned int  d_height,
                          const unsigned int  d_width
 ) {
     extern __shared__ char map_sh_mem[];
-    volatile int* acc = ((volatile int*)map_sh_mem) + 
+    volatile int* acc = ((volatile int*)map_sh_mem) +
                         MapLambda::cardinal*threadIdx.x;
     unsigned int gid = blockIdx.x*blockDim.x + threadIdx.x;
     unsigned int i;
 
     if(gid < d_height) {
-        for(i=0; i<MapLambda::cardinal; i++) 
+        for(i=0; i<MapLambda::cardinal; i++)
             acc[i] = MapLambda::identity();
 
         for (i = 0; i < d_width; i++, gid += d_height) {
@@ -608,8 +608,8 @@ writeKernel(T* d_in, int* perm, T* d_out, const unsigned int d_size) {
 
 template<class T>
 __global__ void
-writeChunkKernelDummy(   
-        T* d_in, int* cond_res, int* perm_chunk, T* d_out, 
+writeChunkKernelDummy(
+        T* d_in, int* cond_res, int* perm_chunk, T* d_out,
         const unsigned int d_height, const unsigned int d_width
 ) {
     unsigned int gid = blockIdx.x*blockDim.x + threadIdx.x, i;
@@ -635,7 +635,7 @@ int myHash(int ind) {
 
 template<class T>
 __global__ void
-writeChunkKernel(   T* d_in, int* cond_res, int* perm_chunk, T* d_out, 
+writeChunkKernel(   T* d_in, int* cond_res, int* perm_chunk, T* d_out,
                     const unsigned int d_height, const unsigned int CHUNK
 ) {
     extern __shared__ char gen_sh_mem[];
@@ -648,7 +648,7 @@ writeChunkKernel(   T* d_in, int* cond_res, int* perm_chunk, T* d_out,
     int acc0 = 0;
 
     unsigned int tmp_id = blockIdx.x*blockDim.x + threadIdx.y*CHUNK*d_height + threadIdx.x;
-    for(int k = 0; k < CHUNK; k++,tmp_id+=d_height) { 
+    for(int k = 0; k < CHUNK; k++,tmp_id+=d_height) {
         if(cond_res[tmp_id] > 0) acc0++;
     }
     ind_sh_mem[threadIdx.x*blockDim.y+threadIdx.y] = acc0;
@@ -658,7 +658,7 @@ writeChunkKernel(   T* d_in, int* cond_res, int* perm_chunk, T* d_out,
     acc0 = (threadIdx.y > 0) ? ind_sh_mem[threadIdx.x*blockDim.y+threadIdx.y-1] : 0;
     __syncthreads();
 
-    tmp_id = blockIdx.x*blockDim.x + threadIdx.y*CHUNK*d_height + threadIdx.x; 
+    tmp_id = blockIdx.x*blockDim.x + threadIdx.y*CHUNK*d_height + threadIdx.x;
     for(int k = 0; k < CHUNK; k++, tmp_id+=d_height) {
         if(cond_res[tmp_id] > 0) {
             elm_sh_mem[myHash(acc_tmp+acc0)] = d_in[tmp_id];
@@ -685,20 +685,20 @@ writeChunkKernel(   T* d_in, int* cond_res, int* perm_chunk, T* d_out,
  * If WITH_ARRAY is defined, then accumulator's representation is
  *    an int[2/4/8] local array, hence in L1 => requires replay instrs
  *    OTHERWISE: an MyInt2/4/8 => hold in registers, but leads to divergence.
- * MyInt4 representation seems to be a bit better than int[4]. 
+ * MyInt4 representation seems to be a bit better than int[4].
  */
 //#define WITH_ARRAY
 template<class OP>
 __global__ void
-writeMultiKernel(   typename OP:: InType* d_in,  int* cond_res, 
-                    typename OP::ExpType* perm_chunk, 
-                    typename OP:: InType* d_out, 
-                    const unsigned int d_height, 
+writeMultiKernel(   typename OP:: InType* d_in,  int* cond_res,
+                    typename OP::ExpType* perm_chunk,
+                    typename OP:: InType* d_out,
+                    const unsigned int d_height,
                     const unsigned int orig_size,
                     const          int CHUNK
 ) {
     typedef typename OP:: InType T;
-    typedef typename OP::ExpType M; 
+    typedef typename OP::ExpType M;
 
     extern __shared__ char gen_sh_mem[];
     volatile M* ind_sh_mem = (volatile M*) gen_sh_mem;
@@ -710,7 +710,7 @@ writeMultiKernel(   typename OP:: InType* d_in,  int* cond_res,
 //    volatile int* acc0 = (volatile int*)(ind_sh_mem + threadIdx.y*blockDim.x + threadIdx.x);
     int  acc0[OP::cardinal];
     #pragma unroll
-    for(k = 0; k < OP::cardinal; k++) 
+    for(k = 0; k < OP::cardinal; k++)
         acc0[k] = 0;
 #else
     M acc0;
@@ -728,7 +728,7 @@ writeMultiKernel(   typename OP:: InType* d_in,  int* cond_res,
 #endif
     }
 
-    { 
+    {
 #ifdef WITH_ARRAY
         volatile int* mem = (volatile int*)(ind_sh_mem + threadIdx.x*(blockDim.y+1)+threadIdx.y);
         #pragma unroll
@@ -780,16 +780,16 @@ writeMultiKernel(   typename OP:: InType* d_in,  int* cond_res,
             tmp_id   += arrtmp[k];
         }
 #else
-        OP::incWithAccumDiff(acc0, arrtmp, perm_chunk + tmp_id - 1, 
-                             perm_chunk + tmp_id + threadIdx.x - 1, 
-                             perm_chunk + min(tmp_id+blockDim.x,d_height) - 1 ); 
+        OP::incWithAccumDiff(acc0, arrtmp, perm_chunk + tmp_id - 1,
+                             perm_chunk + tmp_id + threadIdx.x - 1,
+                             perm_chunk + min(tmp_id+blockDim.x,d_height) - 1 );
 #endif
 
     }
     __syncthreads();
 
     // 4. performs an input-array traversal in which the elements are
-    //    recorded in shared mem (using the block-adjusted indices of acc0) 
+    //    recorded in shared mem (using the block-adjusted indices of acc0)
     tmp_id = blockIdx.x*blockDim.x + threadIdx.y*CHUNK*d_height + threadIdx.x;
 //    if (col < d_height)
     for(int k = 0; k < CHUNK; k++, tmp_id+=d_height) {
@@ -799,7 +799,7 @@ writeMultiKernel(   typename OP:: InType* d_in,  int* cond_res,
         elm_sh_mem[myHash(shind)] = d_in[tmp_id];
         //elm_sh_mem[k*blockDim.x*blockDim.y+threadIdx.y*blockDim.x+threadIdx.x] = d_in[tmp_id];
         acc0[iind] = shind + 1;
-#else 
+#else
         int shind = acc0.selInc(iind);
         elm_sh_mem[myHash(shind-1)] = d_in[tmp_id];
 #endif
@@ -809,8 +809,8 @@ writeMultiKernel(   typename OP:: InType* d_in,  int* cond_res,
     // 6. Finally, the shared memory is traverse in order and
     //    and the filtered array is written to global memory;
     //    Since all the elements of an equiv-class are contiguous
-    //    in shared memory (and global memory), the uncoalesced 
-    //    writes are minimized. 
+    //    in shared memory (and global memory), the uncoalesced
+    //    writes are minimized.
     {
         int* blk_vlst= ((int*)(perm_chunk + d_height - 1)); // very last (row) scan result
         k   = threadIdx.y*blockDim.x + threadIdx.x;
@@ -824,9 +824,9 @@ writeMultiKernel(   typename OP:: InType* d_in,  int* cond_res,
                 tmp_id++;
             }
 
-            tmp_id = glb_ind + loc_ind + (blockIdx.x > 0) * 
+            tmp_id = glb_ind + loc_ind + (blockIdx.x > 0) *
                      ((int*) (perm_chunk + blockIdx.x*blockDim.x - 1))[tmp_id]; // blk_beg;
-            if(tmp_id < orig_size) 
+            if(tmp_id < orig_size)
                 d_out[tmp_id] = elm_sh_mem[myHash(k)];
         }
     }
@@ -838,15 +838,15 @@ writeMultiKernel(   typename OP:: InType* d_in,  int* cond_res,
  */
 template<class OP>
 __global__ void
-writeMultiKernelOpt(typename OP:: InType* d_in,  int* cond_res, 
-                    typename OP::ExpType* perm_chunk, 
-                    typename OP:: InType* d_out, 
-                    const unsigned int d_height, 
+writeMultiKernelOpt(typename OP:: InType* d_in,  int* cond_res,
+                    typename OP::ExpType* perm_chunk,
+                    typename OP:: InType* d_out,
+                    const unsigned int d_height,
                     const unsigned int orig_size,
                     const          int CHUNK
 ) {
     typedef typename OP:: InType T;
-    typedef typename OP::ExpType M; 
+    typedef typename OP::ExpType M;
 
     extern __shared__ char gen_sh_mem[];
     volatile int* ind_sh_mem = (volatile int*) gen_sh_mem;
@@ -874,12 +874,12 @@ writeMultiKernelOpt(typename OP:: InType* d_in,  int* cond_res,
     for(k=0; k<CHUNK; k++, cond_res+=32*d_height, d_in+=blockDim.x) {
         int cur_cond, lw_cond;
         { // 1. transpose a 32*32 chunk of the cond_res array!
-            ind_sh_mem[threadIdx.x*33 + threadIdx.y] = cond_res[0];  
+            ind_sh_mem[threadIdx.x*33 + threadIdx.y] = cond_res[0];
             __syncthreads();
             cur_cond = ind_sh_mem[threadIdx.y*33 + threadIdx.x];
             __syncthreads();
         }
-        
+
         { // 2. scan-warp
             int exp_cond = OP::expand1(cur_cond);
             ind_sh_mem[threadIdx.y*32 + threadIdx.x] = exp_cond;
@@ -894,7 +894,7 @@ writeMultiKernelOpt(typename OP:: InType* d_in,  int* cond_res,
             exp_cond = OP::extract(exp_cond, cur_cond);
             //__syncthreads();
             elm_sh_mem[exp_cond + acc[cur_cond] - 1] = d_in[0];
-            //elm_sh_mem[CHUNK*blockDim.x*threadIdx.y+k*blockDim.x+threadIdx.x] = d_in[0]; 
+            //elm_sh_mem[CHUNK*blockDim.x*threadIdx.y+k*blockDim.x+threadIdx.x] = d_in[0];
             #pragma unroll
             for(int j = 0; j < OP::cardinal; j++) {
                 acc[j] += OP::extract(lw_cond, j);
@@ -902,12 +902,12 @@ writeMultiKernelOpt(typename OP:: InType* d_in,  int* cond_res,
             __syncthreads();
         }
     }
-    
+
     // 6. Finally, the shared memory is traverse in order and
     //    and the filtered array is written to global memory;
     //    Since all the elements of an equiv-class are contiguous
-    //    in shared memory (and global memory), the uncoalesced 
-    //    writes are minimized. 
+    //    in shared memory (and global memory), the uncoalesced
+    //    writes are minimized.
     {
         int* blk_vlst= ((int*)(perm_chunk + d_height - 1)); // very last (row) scan result
         k   = threadIdx.y*blockDim.x + threadIdx.x;
@@ -921,9 +921,9 @@ writeMultiKernelOpt(typename OP:: InType* d_in,  int* cond_res,
                 tmp_id++;
             }
 
-            tmp_id = glb_ind + loc_ind + (blockIdx.x > 0) * 
+            tmp_id = glb_ind + loc_ind + (blockIdx.x > 0) *
                      ((int*) (perm_chunk + blockIdx.x*blockDim.x - 1))[tmp_id]; // blk_beg;
-            if(tmp_id < orig_size) 
+            if(tmp_id < orig_size)
                 d_out[tmp_id] = elm_sh_mem[k];
         }
     }
@@ -934,7 +934,7 @@ writeMultiKernelOpt(typename OP:: InType* d_in,  int* cond_res,
 /************************/
 // blockDim.y = TILE; blockDim.x = TILE
 // each block transposes a square TILE
-template <class T, int TILE> 
+template <class T, int TILE>
 __global__ void matTransposeTiledPadKer(T* A, T* B, int heightA, int widthA, int orig_size, T padel) {
 
   __shared__ T tile[TILE][TILE+1];
@@ -948,7 +948,7 @@ __global__ void matTransposeTiledPadKer(T* A, T* B, int heightA, int widthA, int
 
   __syncthreads();
 
-  x = blockIdx.y * TILE + threadIdx.x; 
+  x = blockIdx.y * TILE + threadIdx.x;
   y = blockIdx.x * TILE + threadIdx.y;
 
   ind = y*heightA + x;

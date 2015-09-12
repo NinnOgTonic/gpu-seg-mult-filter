@@ -5,12 +5,12 @@
 #include "ParBBHost.cu.h"
 
 #if 0
-#include "MsspProblem.cu.h" 
+#include "MsspProblem.cu.h"
 #endif
 
-int testClassicFilter(  const unsigned int num_elems, 
-                        const unsigned int num_hwd_thds, 
-                        const int          VERSION   
+int testClassicFilter(  const unsigned int num_elems,
+                        const unsigned int num_hwd_thds,
+                        const int          VERSION
 ) {
     unsigned int mem_size = num_elems * sizeof(float);
 
@@ -21,7 +21,7 @@ int testClassicFilter(  const unsigned int num_elems,
         std::srand(33); // use current time as seed for random generator
         for(unsigned int i=0; i<num_elems; i++) {
             int r = std::rand();
-            h_in[i] = ((float)r)/RAND_MAX; 
+            h_in[i] = ((float)r)/RAND_MAX;
         }
     }
 
@@ -34,11 +34,11 @@ int testClassicFilter(  const unsigned int num_elems,
         cudaMemcpy(d_in, h_in, mem_size, cudaMemcpyHostToDevice);
         cudaThreadSynchronize();
     }
-    
+
     unsigned int filt_size;
     { // kernel calls
         if(VERSION == 1) {  // Traditional all the way!
-            filt_size = filterTrad<LessThan>( num_elems, num_hwd_thds, d_in, d_out );  //<0.5> 
+            filt_size = filterTrad<LessThan>( num_elems, num_hwd_thds, d_in, d_out );  //<0.5>
         } else if (VERSION == 2 || VERSION == 3) {
             filt_size = filterTradChunked<LessThan>( num_elems, num_hwd_thds, d_in, d_out, VERSION );
         } else {
@@ -98,7 +98,7 @@ int testSeqMultiFilter(int* h_in, int* h_out, int num_elems) {
     for(int k=0; k<ModN::cardinal; k++) {
         tmp_next += accum[k];
         accum[k] = tmp_cur;
-        tmp_cur  = tmp_next; 
+        tmp_cur  = tmp_next;
     }
     unsigned int count[ModN::cardinal];
     for(int i=0; i<ModN::cardinal; i++)
@@ -114,7 +114,7 @@ int testSeqMultiFilter(int* h_in, int* h_out, int num_elems) {
 
     gettimeofday(&t_end, NULL);
     timeval_subtract(&t_diff, &t_end, &t_start);
-    elapsed = (t_diff.tv_sec*1e6+t_diff.tv_usec); 
+    elapsed = (t_diff.tv_sec*1e6+t_diff.tv_usec);
     printf("Sequential Multi Filter runs in: %lu microsecs\n", elapsed);
     return elapsed;
 }
@@ -129,7 +129,7 @@ int testMultiFilter(const unsigned int num_elems, const unsigned int num_hwd_thd
     { // init segments and flags
         std::srand(33); // use current time as seed for random generator
         for(unsigned int i=0; i<num_elems; i++) {
-            h_in[i] = std::rand(); 
+            h_in[i] = std::rand();
         }
     }
 
@@ -140,7 +140,7 @@ int testMultiFilter(const unsigned int num_elems, const unsigned int num_hwd_thd
         cudaMemcpy(d_in, h_in, mem_size, cudaMemcpyHostToDevice);
         cudaThreadSynchronize();
     }
-    
+
     /******************************************/
     /**** Invoke MultiFilter Host Skeleton ****/
     /******************************************/
@@ -165,7 +165,7 @@ int testMultiFilter(const unsigned int num_elems, const unsigned int num_hwd_thd
             int ind_cls= ModN::apply(cur_el);
             accum[ind_cls]++;
         }
-        
+
         bool sizes_ok = true;
         for(int i=0; i<ModN::cardinal; i++) {
             int sz = ((int*)(&filt_size))[i];
@@ -177,7 +177,7 @@ int testMultiFilter(const unsigned int num_elems, const unsigned int num_hwd_thd
         if(!sizes_ok) exit(0);
 
 #if 0
-        if( filt_size.x != accum[0] || filt_size.y != accum[1] || 
+        if( filt_size.x != accum[0] || filt_size.y != accum[1] ||
             filt_size.z != accum[2] || filt_size.w != accum[3]  ) {
             printf( "Invalid Sizes: (x: (%d,%d), y: (%d,%d), z: (%d,%d), w: (%d,%d))! EXITING!\n",
                     filt_size.x, accum[0], filt_size.y, accum[1], filt_size.z, accum[2], filt_size.w, accum[3]);
@@ -190,7 +190,7 @@ int testMultiFilter(const unsigned int num_elems, const unsigned int num_hwd_thd
         for(int k=0; k<ModN::cardinal; k++) {
             tmp_next += accum[k];
             accum[k] = tmp_cur;
-            tmp_cur  = tmp_next; 
+            tmp_cur  = tmp_next;
         }
 
         unsigned int count[ModN::cardinal];
@@ -209,9 +209,9 @@ int testMultiFilter(const unsigned int num_elems, const unsigned int num_hwd_thd
             }
             count[ind_cls]++;
         }
-        if(success) printf( "Multi Filter on %d elems +   VALID RESULT of partition sizes: (%d,%d,%d,%d)!\n\n", 
+        if(success) printf( "Multi Filter on %d elems +   VALID RESULT of partition sizes: (%d,%d,%d,%d)!\n\n",
                             num_elems, filt_size.x, filt_size.y, filt_size.z, filt_size.w);
-        else        printf( "Multi Filter on %d elems + INVALID RESULT of partition sizes: (%d,%d,%d,%d)!\n\n", 
+        else        printf( "Multi Filter on %d elems + INVALID RESULT of partition sizes: (%d,%d,%d,%d)!\n\n",
                             num_elems, filt_size.x, filt_size.y, filt_size.z, filt_size.w);
     }
 
@@ -225,7 +225,7 @@ int testMultiFilter(const unsigned int num_elems, const unsigned int num_hwd_thd
 }
 
 
-int main(int argc, char** argv) { 
+int main(int argc, char** argv) {
     const unsigned int num_hwd_thds = 32*1024;
     const unsigned int num_elems = 50332001; //50332001; //51904512; //50332001; //50331648; //16353455;  // 65535 * 512
 
@@ -235,7 +235,7 @@ int main(int argc, char** argv) {
     testMultiFilter<Mod4>(num_elems, num_hwd_thds);
 
 #if 0
-    const unsigned int mssp_list_size = 8353455; 
+    const unsigned int mssp_list_size = 8353455;
     const unsigned int matrix_row_num = 11033;
     const unsigned int vct_size       = 2076;
     const unsigned int block_size     = 256;
