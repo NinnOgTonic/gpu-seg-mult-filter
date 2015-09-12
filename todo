@@ -1,0 +1,3 @@
+Hvordan var det man håndterede chunks af shared memory, og hvordan var det effektivt?
+
+Hvordan virker segmented mfilter? Hvorfor er det smart at den er segmenteret?
