@@ -71,11 +71,11 @@ int testClassicFilter(  const unsigned int num_elems,
     }
 
     printf("INPUT AND THEN OUTPUT:\n");
-    for(int i = 0; i < memsize; i++) {
+    for(int i = 0; i < mem_size; i++) {
         printf("%f, ", h_in[i]);
     }
     printf("\n\n");
-    for(int i = 0; i < memsize; i++) {
+    for(int i = 0; i < mem_size; i++) {
         printf("%f, ", h_out[i]);
     }
     printf("\n\n");
