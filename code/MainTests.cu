@@ -70,18 +70,6 @@ int testClassicFilter(  const unsigned int num_elems,
         else        printf("Filter (Classical) on %d elems + INVALID RESULT of size: %d accum: %d!\n\n", num_elems, filt_size, accum);
     }
 
-    printf("INPUT AND THEN OUTPUT:\n");
-    for(int i = 0; i < mem_size; i++) {
-        printf("%f, ", h_in[i]);
-    }
-    printf("\n\n");
-    for(int i = 0; i < mem_size; i++) {
-        printf("%f, ", h_out[i]);
-    }
-    printf("\n\n");
-
-
-
     // cleanup memory
     free(h_in );
     free(h_out);
