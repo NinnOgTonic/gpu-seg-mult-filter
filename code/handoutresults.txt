@@ -1,0 +1,30 @@
+Traditional Filter total runtime: 16996 microsecs, from which:
+Map Cond Kernel runs in: 2346 microsecs
+Scan Addition Kernel runs in: 11596 microsecs
+Global Write Kernel runs in: 3054 microsecs
+Filter (Classical) on 50332001 elems +   VALID RESULT of size: 25167098 accum: 25167098!
+
+Dummy Filter total runtime is: 16918 microsecs, from which:
+Transposition runs in: 2353 microsecs
+Map Cond Kernel runs in: 2067 microsecs
+Scan Addition Kernel runs in: 524 microsecs
+Global Write Kernel runs in: 11974 microsecs
+Filter (Classical) on 50332001 elems +   VALID RESULT of size: 25167098 accum: 25167098!
+
+Smart Filter total runtime is: 10431 microsecs, from which:
+Transposition runs in: 2339 microsecs
+Map Cond Kernel runs in: 2061 microsecs
+Scan Addition Kernel runs in: 532 microsecs
+Global Write Kernel runs in: 5499 microsecs
+Filter (Classical) on 50332001 elems +   VALID RESULT of size: 25167098 accum: 25167098!
+
+SEQ_CHUNK: 12, DISCRcaqrd: 4
+
+Multi-Filter total runtime is: 16696 microsecs, from which:
+Transposition runs in: 2345 microsecs
+Map Cond Kernel runs in: 2101 microsecs
+Scan Addition Kernel runs in: 617 microsecs
+Global Write Kernel runs in: 11633 microsecs
+Multi Filter on 50332001 elems +   VALID RESULT of partition sizes: (12582814,12586272,12581349,12581566)!
+
+Sequential Multi Filter runs in: 143799 microsecs
