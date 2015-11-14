@@ -27,18 +27,18 @@ int MsspProblem(int block_size, int inp_size) {
 
     unsigned long int elapsed;
     struct timeval t_start, t_end, t_diff;
-    gettimeofday(&t_start, NULL); 
+    gettimeofday(&t_start, NULL);
 
     cudaMemcpy(inp_d, inp_h, inp_size*sizeof(int), cudaMemcpyHostToDevice);
     { // KERNELS
-        // 1. apply map, i.e., lift each element x to 
+        // 1. apply map, i.e., lift each element x to
         //    (max(x,0),max(x,0), max(x,0), x)
         trivial_map<<< num_blocks, block_size >>>(inp_d, inp_lift, inp_size);
         cudaThreadSynchronize();
-    
+
         // 2. apply scan with the given operator, i.e.,
-        //    write the apply operator in class MsspOP in 
-        //    ScanKernels.cu.h and call scanInc from ScanHost.cu.h  
+        //    write the apply operator in class MsspOP in
+        //    ScanKernels.cu.h and call scanInc from ScanHost.cu.h
         scanInc< MsspOp,MyInt4 > ( block_size, inp_size, inp_lift, res_d );
         cudaThreadSynchronize();
     }
@@ -48,10 +48,10 @@ int MsspProblem(int block_size, int inp_size) {
 
     gettimeofday(&t_end, NULL);
     timeval_subtract(&t_diff, &t_end, &t_start);
-    elapsed = (t_diff.tv_sec*1e6+t_diff.tv_usec); 
+    elapsed = (t_diff.tv_sec*1e6+t_diff.tv_usec);
     printf("MSSP version runs in: %lu microsecs\n", elapsed);
 
-    printf("RESULT is: %d %d %d %d\n", res_h.x, res_h.y, res_h.z, res_h.w); 
+    printf("RESULT is: %d %d %d %d\n", res_h.x, res_h.y, res_h.z, res_h.w);
 
     if(res_h.x == 11) {
         printf("MSSP VALID EXECUTION!\n");

@@ -500,4 +500,120 @@ multiFilter(    const unsigned int      num_elems,
 
 }
 
+
+
+template<class DISCR>
+typename DISCR::ExpType
+segMultiFilter( const unsigned int      num_elems,
+                const unsigned int      num_segments,
+                const unsigned int      num_hwd_thds,
+                typename DISCR::InType* d_in,  // device
+                const unsigned int*     flags,
+                typename DISCR::InType* d_out  // device
+) {
+    const unsigned int MAX_CHUNK = 384; //256; //384;
+    // compute a suitable CHUNK factor and padd the intermediate arrays such
+    // that 64 | D_HEIGHT and 32 | D_WIDTH
+    const unsigned int D_WIDTH = min( nextMultOf(max(num_elems/num_hwd_thds,1), 32), MAX_CHUNK);  // SEQ CHUNK
+    const unsigned int D_HEIGHT= nextMultOf( (num_elems + D_WIDTH - 1) / D_WIDTH, 64 );
+    const unsigned int PADD    = nextMultOf(D_HEIGHT*D_WIDTH, 64*D_WIDTH) - num_elems;
+
+    struct timeval t_start, t_med0, t_med1, t_med2, t_end, t_diff;
+    unsigned long int elapsed;
+
+
+    typename DISCR::InType *d_tr_in;
+    int *cond_res;
+    unsigned int* flags_tr;
+    typename DISCR::ExpType *inds_res;
+    typename DISCR::ExpType  filt_size;
+
+    cudaMalloc((void**)&d_tr_in, D_HEIGHT*D_WIDTH*sizeof(typename DISCR::InType));
+    cudaMalloc((void**)&cond_res, D_HEIGHT*D_WIDTH*sizeof(int));
+    cudaMalloc((void**)&flags_tr, D_HEIGHT*D_WIDTH*sizeof(int));
+
+    // Shouldn't DISCR::cardinal*sizeof(int) be sizeof(DISCR::ExpType)?
+    cudaMalloc((void**)&inds_res, 2*((D_HEIGHT+num_segments)*DISCR::cardinal*sizeof(int));
+
+    gettimeofday(&t_start, NULL);
+    { // 1. Transpose with padding!
+       transposePad<typename DISCR::InType, 16>
+            (d_in, d_tr_in, D_HEIGHT, D_WIDTH, num_elems, DISCR::padelm);
+       transposePad<unsigned int, 16>
+            (flags, flags_tr, D_HEIGHT, D_WIDTH, num_elems, 0);
+    }
+
+    cudaThreadSynchronize();
+    gettimeofday(&t_med0, NULL);
+
+    { // 2. The Map Condition Kernel Call
+        const unsigned int block_size = 64; //256;
+        const unsigned int num_blocks = (D_HEIGHT + block_size - 1) / block_size;
+        const unsigned int SH_MEM_MAP  = (block_size + num_segments) * DISCR::cardinal * sizeof(int);
+
+        // map the condition
+        segMapVctKernel<DISCR><<<num_blocks, block_size, SH_MEM_MAP>>>
+                (d_tr_in, cond_res, inds_res, D_HEIGHT, D_WIDTH);
+    }
+    cudaThreadSynchronize();
+    gettimeofday(&t_med1, NULL);
+
+    { // 3. the inclusive scan of the condition results
+        const unsigned int block_size = 128;
+        scanInc<typename DISCR::AddExpType,typename DISCR::ExpType>
+                (block_size, D_HEIGHT, inds_res, inds_res+D_HEIGHT);
+
+        cudaMemcpy( &filt_size, &inds_res[2*D_HEIGHT - 1],
+                    DISCR::cardinal*sizeof(int), cudaMemcpyDeviceToHost );
+
+        filt_size.selSub(DISCR::cardinal, PADD);
+    }
+
+    cudaThreadSynchronize();
+    gettimeofday(&t_med2, NULL);
+
+    { // 4. the write to global memory part
+        // By construction: D_WIDTH  is guaranteed to be a multiple of 32 AND
+        //                  D_HEIGHT is guaranteed to be a multiple of 64 !!!
+        const unsigned int SEQ_CHUNK   = D_WIDTH / 32;
+        printf("SEQ_CHUNK: %u, DISCRcaqrd: %u\n\n", SEQ_CHUNK, DISCR::cardinal);
+        const unsigned int SH_MEM_SIZE = 1024 * sizeof(int) * max(SEQ_CHUNK,DISCR::cardinal);
+
+        dim3 block(32, 32, 1);
+        dim3 grid ( D_HEIGHT/32, 1, 1);
+        writeMultiKernel<DISCR><<<grid, block, SH_MEM_SIZE>>>
+            (d_tr_in, cond_res, inds_res+D_HEIGHT, d_out, D_HEIGHT, num_elems, SEQ_CHUNK);
+    }
+    cudaThreadSynchronize();
+    gettimeofday(&t_end, NULL);
+
+    timeval_subtract(&t_diff, &t_end, &t_start);
+    elapsed = (t_diff.tv_sec*1e6+t_diff.tv_usec);
+    printf("Multi-Filter total runtime is: %lu microsecs, from which:\n", elapsed);
+
+    timeval_subtract(&t_diff, &t_med0, &t_start);
+    elapsed = (t_diff.tv_sec*1e6+t_diff.tv_usec);
+    printf("Transposition runs in: %lu microsecs\n", elapsed);
+
+    timeval_subtract(&t_diff, &t_med1, &t_med0);
+    elapsed = (t_diff.tv_sec*1e6+t_diff.tv_usec);
+    printf("Map Cond Kernel runs in: %lu microsecs\n", elapsed);
+
+    timeval_subtract(&t_diff, &t_med2, &t_med1);
+    elapsed = (t_diff.tv_sec*1e6+t_diff.tv_usec);
+    printf("Scan Addition Kernel runs in: %lu microsecs\n", elapsed);
+
+    timeval_subtract(&t_diff, &t_end, &t_med2);
+    elapsed = (t_diff.tv_sec*1e6+t_diff.tv_usec);
+    printf("Global Write Kernel runs in: %lu microsecs\n", elapsed);
+
+    // free resources
+    cudaFree(inds_res);
+    cudaFree(cond_res);
+    cudaFree(d_tr_in );
+
+    return filt_size;
+
+}
+
 #endif //PAR_BB_HOST

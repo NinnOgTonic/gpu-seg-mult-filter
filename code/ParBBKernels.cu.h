@@ -592,6 +592,96 @@ mapVctKernel(   typename MapLambda::InType*  d_in,
 }
 
 
+template<class MapLambda>
+__global__ void
+segMapVctKernel(typename MapLambda::InType*     d_in,
+                typename MapLambda::OutType*    d_out,
+                typename MapLambda::ExpType*    d_out_chunk,
+                const unsigned int*             flags, // Flags on the form [0,0,2,2,4,4] can be derrived by a filerish map and a scan on the segment flags
+                const unsigned int              d_height,
+                const unsigned int              d_width
+) {
+
+
+    unsigned int gid = blockIdx.x*blockDim.x + threadIdx.x;
+    unsigned int i, n;
+
+    extern __shared__ char map_sh_mem[];
+    volatile int* chunk_acc = ((volatile int*)map_sh_mem) +
+                        MapLambda::cardinal*threadIdx.x;
+
+    volatile int* seg_acc = ((volatile int*)map_sh_mem) +
+                        MapLambda::cardinal*blockDim.x + FIX_ME;
+    volatile int* org_seg_acc = seg_acc;
+
+    int tmp_segment = flags[gid];
+    int tmp_flag = flags[gid];
+
+    volatile int* curr_acc;
+    unsigned int seg_cnt;
+
+    if(tmp_segment == gid){
+        curr_acc = seg_acc;
+        seg_cnt = 1;
+    } else {
+        curr_acc = chunk_acc;
+        seg_cnt = 0;
+    }
+
+    // Figure out if we are the first chunk in the segment by looking up the first gid in the previous chunks flags and testing if they overlap to our segment
+    if(flags[gid-1] == tmp_segment){
+        // We are same segment, we are not first
+    } else if(tmp_segment < flags[gid-1]+d_width){
+        // We are the first chunk in the segment
+    } else if(tmp_segment == gid){
+        // We are the first chunk in the segment
+    } else {
+        // WTF WE SHOULDNT BE HERE WTF?
+        printf("WTFWTFWTF");
+    }
+
+
+    if(gid < d_height) {
+        // Fix me: Do this globally for all chunk and segment accumulators
+        for(i=0; i<MapLambda::cardinal; i++) {
+            acc[i] = MapLambda::identity();
+        }
+
+
+        for (i = 0; i < d_width; i++, gid += d_height) {
+
+            tmp_flag = flags[gid];
+            if(tmp_segment != tmp_flag){
+                // We crossed into a new segment, update stuff, we know we are the first one when we cross into a new segment
+                seg_cnt += 1;
+                seg_acc += FIX_ME;
+                curr_acc = seg_acc;
+                tmp_segment = tmp_flag;
+            }
+
+            typename MapLambda::OutType res = MapLambda::apply(d_in[gid]);
+            d_out[gid] = res;
+            curr_acc[res]++;
+        }
+
+
+        gid = blockIdx.x*blockDim.x + threadIdx.x; // -= d_height * d_width;
+
+        // For segments we have touched.
+        for(n=0; n<seg_cnt; n++){
+            // First write back stuff which we were first to touch
+            curr_acc = &org_seg_acc[];
+            for(i=0; i<MapLambda::cardinal; i++) {
+                ((int*)(d_out_chunk+gid))[i] = curr_acc[i];
+            }
+
+            // Syncthreads
+            // Then write back chunk info
+        }
+    }
+}
+
+
 /********************/
 /*** WRITE Kernel ***/
 /********************/
