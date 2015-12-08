@@ -391,7 +391,7 @@ multiFilter(    const unsigned int      num_elems,
     // compute a suitable CHUNK factor and padd the intermediate arrays such
     // that 64 | D_HEIGHT and 32 | D_WIDTH
     const unsigned int D_WIDTH = min( nextMultOf(max(num_elems/num_hwd_thds,1), 32), MAX_CHUNK);  // SEQ CHUNK
-    const unsigned int D_HEIGHT= nextMultOf( (num_elems + D_WIDTH - 1) / D_WIDTH, 64 );
+    const unsigned int D_HEIGHT= nextMultOf( (num_elems + D_WIDTH - 1) / D_WIDTH, 64 );           // NUM CHUNKS?
     const unsigned int PADD    = nextMultOf(D_HEIGHT*D_WIDTH, 64*D_WIDTH) - num_elems;
 
     struct timeval t_start, t_med0, t_med1, t_med2, t_end, t_diff;
