@@ -198,6 +198,36 @@ void transposePad( T*                 inp_d,
     cudaThreadSynchronize();
 }
 
+void cuprintf(int *cudabuf, int size) {
+    int *hostbuf;
+    hostbuf = (int*)malloc(size * sizeof(int));
+    cudaMemcpy(hostbuf, cudabuf, size * sizeof(int), cudaMemcpyDeviceToHost);
+    printf("\n");
+    for(int i = 0; i < size; i++) {
+        printf("%d, ", hostbuf[i]);
+    }
+    printf("\n");
+}
+void cuprintff(float *cudabuf, int size) {
+    float *hostbuf;
+    hostbuf = (float*)malloc(size * sizeof(float));
+    cudaMemcpy(hostbuf, cudabuf, size * sizeof(float), cudaMemcpyDeviceToHost);
+    printf("\n");
+    for(int i = 0; i < size; i++) {
+        printf("%f, ", hostbuf[i]);
+    }
+    printf("\n");
+}
+void cuprintf4(MyInt4 *cudabuf, int size) {
+    MyInt4 *hostbuf;
+    hostbuf = (MyInt4*)malloc(size * sizeof(int) * 4);
+    cudaMemcpy(hostbuf, cudabuf, size * sizeof(int) * 4, cudaMemcpyDeviceToHost);
+    printf("\n");
+    for(int i = 0; i < size; i++) {
+        printf("%d, %d, %d, %d\n", hostbuf[i].x, hostbuf[i].y, hostbuf[i].z, hostbuf[i].w);
+    }
+    printf("\n");
+}
 
 #define MAX_BLOCKS 65535
 
@@ -242,16 +272,20 @@ int filterTrad( const unsigned int     num_elems,
     mapKernel<COND><<<num_blocks, block_size>>>(d_in, cond_res, num_elems);
     cudaThreadSynchronize();
     gettimeofday(&t_med1, NULL);
+    //cuprintff(d_in, 100);
+    //cuprintf(cond_res, 100);
 
     // inclusive scan of the condition results
     scanInc<Add<int>,int>(block_size, num_elems, cond_res, inds_res);
     cudaThreadSynchronize();
     gettimeofday(&t_med2, NULL);
+    //cuprintf(inds_res, 100);
 
     cudaMemcpy(&filt_size, &inds_res[num_elems-1], sizeof(int), cudaMemcpyDeviceToHost);
     writeKernel<typename COND::InType><<<num_blocks, block_size>>>(d_in, inds_res, d_out, num_elems);
     cudaThreadSynchronize();
     gettimeofday(&t_end, NULL);
+    //cuprintff(d_out, 100);
 
     timeval_subtract(&t_diff, &t_end, &t_start);
     elapsed = (t_diff.tv_sec*1e6+t_diff.tv_usec);
@@ -307,6 +341,8 @@ int filterTradChunked(  const unsigned int     num_elems,
     }
     cudaThreadSynchronize();
     gettimeofday(&t_med0, NULL);
+    //cuprintff(d_in, 100);
+    //cuprintff(d_tr_in, 100);
 
     { // 2. The Map Condition Kernel Call
         const unsigned int block_size = 64; //256;
@@ -317,6 +353,10 @@ int filterTradChunked(  const unsigned int     num_elems,
     }
     cudaThreadSynchronize();
     gettimeofday(&t_med1, NULL);
+    //cuprintf(cond_res, 100);
+    //cuprintf(inds_res, 100);
+
+    // Why is inds_res two arrays in one? For optimisation? (inds_res and inds_res+D_HEIGHT.)
 
     { // 3. the inclusive scan of the condition results
         const unsigned int block_size = 128;
@@ -326,6 +366,7 @@ int filterTradChunked(  const unsigned int     num_elems,
     }
     cudaThreadSynchronize();
     gettimeofday(&t_med2, NULL);
+    //cuprintf(inds_res+D_HEIGHT, 100);
 
     if(VERSION == 2) {
         // version with dummy writes, i.e., writes are performed to
@@ -347,6 +388,7 @@ int filterTradChunked(  const unsigned int     num_elems,
     }
     cudaThreadSynchronize();
     gettimeofday(&t_end, NULL);
+    //cuprintff(d_out, 100);
 
     timeval_subtract(&t_diff, &t_end, &t_start);
     elapsed = (t_diff.tv_sec*1e6+t_diff.tv_usec);
@@ -394,16 +436,19 @@ multiFilter(    const unsigned int      num_elems,
     const unsigned int D_HEIGHT= nextMultOf( (num_elems + D_WIDTH - 1) / D_WIDTH, 64 );           // NUM CHUNKS?
     const unsigned int PADD    = nextMultOf(D_HEIGHT*D_WIDTH, 64*D_WIDTH) - num_elems;
 
+    printf("\nD_WIDTH: %d, D_HEIGHT: %d\n\n\n", D_WIDTH, D_HEIGHT);
+
     struct timeval t_start, t_med0, t_med1, t_med2, t_end, t_diff;
     unsigned long int elapsed;
 
-
     typename DISCR::InType *d_tr_in;
     int *cond_res;
+    int *gids;
     typename DISCR::ExpType *inds_res;
     typename DISCR::ExpType  filt_size;
     cudaMalloc((void**)&d_tr_in, D_HEIGHT*D_WIDTH*sizeof(typename DISCR::InType));
     cudaMalloc((void**)&cond_res, D_HEIGHT*D_WIDTH*sizeof(int));
+    cudaMalloc((void**)&gids, 1000*sizeof(int));
     cudaMalloc((void**)&inds_res, 2*D_HEIGHT*DISCR::cardinal*sizeof(int));
 
     gettimeofday(&t_start, NULL);
@@ -421,9 +466,15 @@ multiFilter(    const unsigned int      num_elems,
 
         // map the condition
         mapVctKernel<DISCR><<<num_blocks, block_size, SH_MEM_MAP>>>
-                (d_tr_in, cond_res, inds_res, D_HEIGHT, D_WIDTH);
+                (d_tr_in, cond_res, inds_res, gids, D_HEIGHT, D_WIDTH);
     }
     cudaThreadSynchronize();
+    cuprintf(gids, 100);
+    //cuprintf(inds_res, 50);
+    //printf("@@@@@@@@@@@@@@@@@@@@@@@@@ %d @@@@@@@@@@@@@@@@@@\n", inds_res[0].x);
+    //cuprintf4(inds_res, D_HEIGHT);
+    printf("d_height is: %d\n", D_HEIGHT);
+    cuprintf4((MyInt4*)inds_res, 10);
     gettimeofday(&t_med1, NULL);
 
     { // 3. the inclusive scan of the condition results
@@ -439,6 +490,9 @@ multiFilter(    const unsigned int      num_elems,
 //                filt_size.x, filt_size.y, filt_size.z, filt_size.w, D_HEIGHT, D_WIDTH, PADD, (D_HEIGHT+31)/32 );
     }
     cudaThreadSynchronize();
+    printf("@@@@@@@@@@@@@@@@@@@@@@@@@ AFTER SCAN INC\n");
+    cuprintf4((MyInt4*)inds_res+D_HEIGHT, 10);
+    //cuprintf(inds_res, 50);
     gettimeofday(&t_med2, NULL);
 
 #if 1

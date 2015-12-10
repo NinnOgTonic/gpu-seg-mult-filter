@@ -25,6 +25,11 @@ int testClassicFilter(  const unsigned int num_elems,
         }
     }
 
+    for(int i = 0; i < 100; i++) {
+        printf("%f, ", h_in[i]);
+    }
+    printf("\n\n\n\n");
+
     float *d_in, *d_out;
     { // device allocation and copyin
         cudaMalloc((void**)&d_in ,   mem_size);
@@ -229,9 +234,9 @@ int main(int argc, char** argv) {
     const unsigned int num_hwd_thds = 32*1024;
     const unsigned int num_elems = 50332001; //50332001; //51904512; //50332001; //50331648; //16353455;  // 65535 * 512
 
-    testClassicFilter(num_elems, num_hwd_thds, 1);
-    testClassicFilter(num_elems, num_hwd_thds, 2);
-    testClassicFilter(num_elems, num_hwd_thds, 3);
+    //testClassicFilter(num_elems, num_hwd_thds, 1);
+    //testClassicFilter(num_elems, num_hwd_thds, 2);
+    //testClassicFilter(num_elems, num_hwd_thds, 3);
     testMultiFilter<Mod4>(num_elems, num_hwd_thds);
 
 #if 0

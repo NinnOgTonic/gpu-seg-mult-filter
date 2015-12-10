@@ -567,6 +567,7 @@ __global__ void
 mapVctKernel(   typename MapLambda::InType*  d_in,
                 typename MapLambda::OutType* d_out,
                 typename MapLambda::ExpType* d_out_chunk,
+                                        int* gids,
                          const unsigned int  d_height,
                          const unsigned int  d_width
 ) {
@@ -574,6 +575,10 @@ mapVctKernel(   typename MapLambda::InType*  d_in,
     volatile int* acc = ((volatile int*)map_sh_mem) +
                         MapLambda::cardinal*threadIdx.x;
     unsigned int gid = blockIdx.x*blockDim.x + threadIdx.x;
+    if (threadIdx.x == 0) {
+    	gids[blockIdx.x] = blockIdx.x*blockDim.x;
+    }
+
     unsigned int i;
 
     if(gid < d_height) {
