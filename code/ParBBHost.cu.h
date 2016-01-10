@@ -195,7 +195,7 @@ void transposePad( T*                 inp_d,
    matTransposeTiledPadKer<T,tile> <<< grid, block >>>
     (inp_d, out_d, height, width, oinp_size,pad_elem);
 
-    cudaThreadSynchronize();
+   cudaThreadSynchronize();
 }
 
 void cuprintf(int *cudabuf, int size) {
@@ -451,12 +451,18 @@ multiFilter(    const unsigned int      num_elems,
     cudaMalloc((void**)&gids, 1000*sizeof(int));
     cudaMalloc((void**)&inds_res, 2*D_HEIGHT*DISCR::cardinal*sizeof(int));
 
+    printf("D_IN IS:\n");
+    cuprintf(d_in, 132);
     gettimeofday(&t_start, NULL);
     { // 1. Transpose with padding!
        transposePad<typename DISCR::InType,16>
             (d_in, d_tr_in, D_HEIGHT, D_WIDTH, num_elems, DISCR::padelm);
     }
+    printf("D_HEIGHT: %d, D_WIDTH: %d, num_elems: %d, padelwat: %d\n", D_HEIGHT, D_WIDTH, num_elems, DISCR::padelm);
+    // D_HEIGHT: 131136, D_WIDTH: 384, num_elems: 50332001, padelwat: 3
     cudaThreadSynchronize();
+    printf("D_TR_IN IS:\n");
+    cuprintf(d_tr_in, 132);
     gettimeofday(&t_med0, NULL);
 
     { // 2. The Map Condition Kernel Call
@@ -554,15 +560,13 @@ multiFilter(    const unsigned int      num_elems,
 
 }
 
-
-
 template<class DISCR>
 typename DISCR::ExpType
-segMultiFilter( const unsigned int      num_elems,
-                const unsigned int      num_segments,
+sgmMultiFilter( const unsigned int      num_elems,
+                      unsigned int      num_segments,
                 const unsigned int      num_hwd_thds,
                 typename DISCR::InType* d_in,  // device
-                const unsigned int*     flags,
+                unsigned int*     flags, // device
                 typename DISCR::InType* d_out  // device
 ) {
     const unsigned int MAX_CHUNK = 384; //256; //384;
@@ -572,14 +576,18 @@ segMultiFilter( const unsigned int      num_elems,
     const unsigned int D_HEIGHT= nextMultOf( (num_elems + D_WIDTH - 1) / D_WIDTH, 64 );
     const unsigned int PADD    = nextMultOf(D_HEIGHT*D_WIDTH, 64*D_WIDTH) - num_elems;
 
+    printf("PADD IS: %d\n", PADD);
+
     struct timeval t_start, t_med0, t_med1, t_med2, t_end, t_diff;
     unsigned long int elapsed;
-
 
     typename DISCR::InType *d_tr_in;
     int *cond_res;
     unsigned int* flags_tr;
     typename DISCR::ExpType *inds_res;
+    typename DISCR::ExpType *seg_inds_res;
+    unsigned int *seg_ids, *seg_ids_tr;
+    unsigned int *chunk_flags, *chunk_flags2;
     typename DISCR::ExpType  filt_size;
 
     cudaMalloc((void**)&d_tr_in, D_HEIGHT*D_WIDTH*sizeof(typename DISCR::InType));
@@ -587,17 +595,72 @@ segMultiFilter( const unsigned int      num_elems,
     cudaMalloc((void**)&flags_tr, D_HEIGHT*D_WIDTH*sizeof(int));
 
     // Shouldn't DISCR::cardinal*sizeof(int) be sizeof(DISCR::ExpType)?
-    cudaMalloc((void**)&inds_res, 2*((D_HEIGHT+num_segments)*DISCR::cardinal*sizeof(int));
+    cudaMalloc((void**)&inds_res, 2*(D_HEIGHT*DISCR::cardinal*sizeof(int)));
+    cudaMalloc((void**)&seg_inds_res, 2*(num_segments*DISCR::cardinal*sizeof(int)));
+    //cudaMalloc((void**)&seg_ids, num_elems*DISCR::cardinal*sizeof(int));
+    //cudaMalloc((void**)&seg_ids_tr, num_elems*DISCR::cardinal*sizeof(int));
+    cudaMalloc((void**)&seg_ids,    D_HEIGHT*D_WIDTH*4*sizeof(int));
+    cudaMalloc((void**)&seg_ids_tr, D_HEIGHT*D_WIDTH*4*sizeof(int));
+    cudaMalloc((void**)&chunk_flags, 2*(D_HEIGHT*DISCR::cardinal*sizeof(int)));
+    cudaMalloc((void**)&chunk_flags2, 2*(D_HEIGHT*DISCR::cardinal*sizeof(int)));
+
+    cudaMemset((void*)inds_res, 0, 2*(D_HEIGHT*DISCR::cardinal*sizeof(int)));
+    cudaMemset((void*)cond_res, 0, D_HEIGHT*D_WIDTH*sizeof(int));
+    cudaMemset((void*)seg_inds_res, 0, 2*(num_segments*DISCR::cardinal*sizeof(int)));
+
+    {
+        const unsigned int block_size = 64; //TODO FIXME: Should we use this block size?
+        // Prepare seg_ids (flags scanned over to 00001111222333 format...)
+        // Note: It's 1-indexed. Values subtracted by 1 in kernel when necessary.
+        scanInc<Add<unsigned int>, unsigned int>
+            ((unsigned int)block_size, (unsigned long)num_elems, flags, seg_ids);
+    }
+
+    cudaThreadSynchronize();
+    
+    printf("D_IN IS:\n");
+    cuprintf(d_in, 128);
 
     gettimeofday(&t_start, NULL);
     { // 1. Transpose with padding!
        transposePad<typename DISCR::InType, 16>
             (d_in, d_tr_in, D_HEIGHT, D_WIDTH, num_elems, DISCR::padelm);
+       // FIXME TODO: Flags should be transposed the same way as the regular elements.
+       // Otherwise indexing needs to be done in transposed manner in-place.
        transposePad<unsigned int, 16>
             (flags, flags_tr, D_HEIGHT, D_WIDTH, num_elems, 0);
+       transposePad<unsigned int, 16>
+            (seg_ids, seg_ids_tr, D_HEIGHT, D_WIDTH, num_elems, 0);
     }
+    //printf("D_HEIGHT: %d, D_WIDTH: %d, num_elems: %d, padelwat: %d\n", D_HEIGHT, D_WIDTH, num_elems, DISCR::padelm);
+    // D_HEIGHT: 131136, D_WIDTH: 384, num_elems: 50332001, padelwat: 3
+    // D_HEIGHT: 64, D_WIDTH: 32, num_elems: 1024, padelwat: 3
 
     cudaThreadSynchronize();
+
+    //printf("FLAGS ARE:\n");
+    //cuprintf((int*)flags, 1024);
+    printf("SEG IDS ARE (num_elems: %d):\n", num_elems);
+    cuprintf((int*)seg_ids, 32*64);
+    printf("SEG IDS_TR ARE (num_elems: %d):\n", num_elems);
+    cuprintf((int*)seg_ids_tr, 32*64);
+    printf("FLAGS ARE (num_elems: %d):\n", num_elems);
+    cuprintf((int*)flags, 32*64);
+    printf("FLAGS_TR ARE (num_elems: %d):\n", num_elems);
+    cuprintf((int*)flags_tr, 32*64);
+
+    printf("D_TR_IN IS:\n");
+    cuprintf(d_tr_in, 128);
+
+    //printf("SEG_IDS_TR IS:\n");
+    //cuprintf((int*)seg_ids_tr, 128);
+
+    printf("COND_RES BEFORE KERNEL IS:\n");
+    cuprintf(cond_res, 128);
+
+    printf("SEG_INDS_RES (SEGMENT COUNTERS) BEFORE KERNEL CALL IS (num segments: %d):\n", num_segments);
+    cuprintf4(seg_inds_res, 32);
+
     gettimeofday(&t_med0, NULL);
 
     { // 2. The Map Condition Kernel Call
@@ -606,10 +669,25 @@ segMultiFilter( const unsigned int      num_elems,
         const unsigned int SH_MEM_MAP  = (block_size + num_segments) * DISCR::cardinal * sizeof(int);
 
         // map the condition
-        segMapVctKernel<DISCR><<<num_blocks, block_size, SH_MEM_MAP>>>
-                (d_tr_in, cond_res, inds_res, D_HEIGHT, D_WIDTH);
+        sgmMapVctKernel<DISCR><<<num_blocks, block_size, SH_MEM_MAP>>>
+                (d_tr_in, cond_res, inds_res, seg_inds_res, flags_tr, seg_ids_tr, chunk_flags, D_HEIGHT, D_WIDTH);
     }
     cudaThreadSynchronize();
+
+    printf("SEG_INDS_RES (SEGMENT COUNTERS, %p) AFTER KERNEL CALL IS:\n", seg_inds_res);
+    cuprintf4(seg_inds_res, num_segments);
+    printf("COND_RES IS:\n");
+    cuprintf(cond_res, 512);
+    printf("INDS_RES (CHUNK COUNTERS) IS:\n");
+    cuprintf4(inds_res, 80);
+
+    const unsigned int block_size = 64; //256;
+    const unsigned int num_blocks = (D_HEIGHT + block_size - 1) / block_size;
+    printf("CHUNK_FLAGS ARE:\n");
+    cuprintf((int*)chunk_flags, 128);
+
+    /*
+
     gettimeofday(&t_med1, NULL);
 
     { // 3. the inclusive scan of the condition results
@@ -661,10 +739,16 @@ segMultiFilter( const unsigned int      num_elems,
     elapsed = (t_diff.tv_sec*1e6+t_diff.tv_usec);
     printf("Global Write Kernel runs in: %lu microsecs\n", elapsed);
 
+    */
+
     // free resources
     cudaFree(inds_res);
+    cudaFree(seg_inds_res);
+    cudaFree(seg_ids);
     cudaFree(cond_res);
-    cudaFree(d_tr_in );
+    cudaFree(d_tr_in);
+    cudaFree(flags);
+    cudaFree(chunk_flags);
 
     return filt_size;
 

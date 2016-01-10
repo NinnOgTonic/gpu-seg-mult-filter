@@ -1,2 +1,2 @@
 Simply compile with:
-    $ nvcc -O3 MainTests.cu
+    $ nvcc -O3 MainTests.cu -arch sm_20

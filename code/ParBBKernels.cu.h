@@ -599,90 +599,116 @@ mapVctKernel(   typename MapLambda::InType*  d_in,
 
 template<class MapLambda>
 __global__ void
-segMapVctKernel(typename MapLambda::InType*     d_in,
+sgmMapVctKernel(typename MapLambda::InType*     d_in,
                 typename MapLambda::OutType*    d_out,
                 typename MapLambda::ExpType*    d_out_chunk,
-                const unsigned int*             flags, // Flags on the form [0,0,2,2,4,4] can be derrived by a filerish map and a scan on the segment flags
+                typename MapLambda::ExpType*    d_out_segs,
+                const unsigned int*             flags, // Flags on the form [1,0,0,0,1,0,0] can be derrived by a scan and map (\x -> x-1) of segment flags
+                const unsigned int*             seg_id, // Flags on the form [1,1,2,2,2,3,3,4,4,4,...] can be derrived by a scan of segment flags
+                const unsigned int*             chunk_flags,
                 const unsigned int              d_height,
                 const unsigned int              d_width
 ) {
-
-
     unsigned int gid = blockIdx.x*blockDim.x + threadIdx.x;
-    unsigned int i, n;
+    unsigned int gidorig = blockIdx.x*blockDim.x + threadIdx.x;
+    unsigned int i, n, k;
 
+    printf("d_width: %d, d_height: %d, blockIdx.x: %d, blockDim.x: %d, threadIdx.x: %d, gid: %d\n", d_width, d_height, blockIdx.x, blockDim.x, threadIdx.x, gid);
     extern __shared__ char map_sh_mem[];
-    volatile int* chunk_acc = ((volatile int*)map_sh_mem) +
-                        MapLambda::cardinal*threadIdx.x;
+    volatile int* chunk_acc = ((volatile int*)map_sh_mem) + MapLambda::cardinal*threadIdx.x;
 
-    volatile int* seg_acc = ((volatile int*)map_sh_mem) +
-                        MapLambda::cardinal*blockDim.x + FIX_ME;
-    volatile int* org_seg_acc = seg_acc;
+    // Needs to be updated every time we look at a new element
+    volatile int* seg_acc   = ((volatile int*)map_sh_mem) + MapLambda::cardinal*(blockDim.x + seg_id[gid] - 1);
 
-    int tmp_segment = flags[gid];
-    int tmp_flag = flags[gid];
+    printf("shared mem: %p, chunk_acc: %p, seg_acc: %p, gid: %d, seg_id[gid]: %d\n", map_sh_mem, chunk_acc, seg_acc, gid, seg_id[gid]);
 
-    volatile int* curr_acc;
-    unsigned int seg_cnt;
+    bool write_to_seg       = flags[gid] == 1;
+    int seg_cnt             = (write_to_seg ? 1 : 0);
+    int start_seg_num = -1;
 
-    if(tmp_segment == gid){
-        curr_acc = seg_acc;
-        seg_cnt = 1;
+    int chunk_flag;
+    if(flags[gid]) {
+        chunk_flag = 1;
+    } else if(gid >= d_height && seg_id[gid] != seg_id[gid - d_height]) {
+        chunk_flag = 1;
     } else {
-        curr_acc = chunk_acc;
-        seg_cnt = 0;
+        chunk_flag = 0;
     }
-
-    // Figure out if we are the first chunk in the segment by looking up the first gid in the previous chunks flags and testing if they overlap to our segment
-    if(flags[gid-1] == tmp_segment){
-        // We are same segment, we are not first
-    } else if(tmp_segment < flags[gid-1]+d_width){
-        // We are the first chunk in the segment
-    } else if(tmp_segment == gid){
-        // We are the first chunk in the segment
-    } else {
-        // WTF WE SHOULDNT BE HERE WTF?
-        printf("WTFWTFWTF");
-    }
-
 
     if(gid < d_height) {
         // Fix me: Do this globally for all chunk and segment accumulators
-        for(i=0; i<MapLambda::cardinal; i++) {
-            acc[i] = MapLambda::identity();
+        for(i = 0; i < MapLambda::cardinal; i++) {
+            chunk_acc[i] = MapLambda::identity();
+            /*
+            // This is already handled in for loop below?
+            if(chunk_flag) {
+	        seg_acc[i] = MapLambda::identity();
+	        //seg_acc[i] = 1;
+                printf("FOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO: &seg_acc[i]: %p\n", &seg_acc[i]);
+	    }
+            */
         }
 
-
-        for (i = 0; i < d_width; i++, gid += d_height) {
-
-            tmp_flag = flags[gid];
-            if(tmp_segment != tmp_flag){
-                // We crossed into a new segment, update stuff, we know we are the first one when we cross into a new segment
+        // TODO: This will index gid's from 0 to 2048. What if num_elems < 2048? Fix with padding?
+        for(i = 0; i < d_width; i++, gid += d_height) {
+            if(flags[gid]) {
+                printf("GID %d SAW FLAG: %d, SEG_ID: %d\n", gid, flags[gid], seg_id[gid]);
+                seg_acc = ((volatile int*)map_sh_mem) + MapLambda::cardinal*(blockDim.x + seg_id[gid] - 1);
+		for(n = 0; n < MapLambda::cardinal; n++) {
+		    //seg_acc[n] = MapLambda::identity();
+		    seg_acc[n] = MapLambda::identity();
+		}
+                if(start_seg_num < 0) {
+                    start_seg_num = seg_id[gid] - 1;
+                }
+    		write_to_seg = 1;
                 seg_cnt += 1;
-                seg_acc += FIX_ME;
-                curr_acc = seg_acc;
-                tmp_segment = tmp_flag;
-            }
+	    }
 
             typename MapLambda::OutType res = MapLambda::apply(d_in[gid]);
+            //typename MapLambda::OutType res = MapLambda::identity();
+            //printf("gid: %d, res: %d\n", gid, res);
+            //printf("d_out: %p\n", d_out);
             d_out[gid] = res;
-            curr_acc[res]++;
+            if(write_to_seg) {
+                seg_acc[res]++;
+            } else {
+                chunk_acc[res]++;
+            }
         }
+        gid -= d_height;
 
+        /*
+        for(n = 0; n < 20; n++) {
+            for(i = 0; i < 4; i++) {
+                ((int*)(d_out_segs + n))[i] = i;
+            }
+        }
+        return;
+        */
 
+        // Write segment counters we have touched back to global memory
+        printf("####. gid: %d, seg_id[gid]: %d\n", gid, seg_id[gid]);
+        if(seg_cnt > 0) {
+    	    for(n = start_seg_num; n < start_seg_num + seg_cnt; n++) {
+                printf("WRITING TO SEGMENT COUNTER %d\n", n);
+	        seg_acc = ((volatile int*)map_sh_mem) + MapLambda::cardinal*(blockDim.x + n);
+	        for(i = 0; i < MapLambda::cardinal; i++) {
+		    ((int*)(d_out_segs + n))[i] = seg_acc[i];
+	        }
+	    }
+	}
+
+        // Reset gid
         gid = blockIdx.x*blockDim.x + threadIdx.x; // -= d_height * d_width;
 
-        // For segments we have touched.
-        for(n=0; n<seg_cnt; n++){
-            // First write back stuff which we were first to touch
-            curr_acc = &org_seg_acc[];
-            for(i=0; i<MapLambda::cardinal; i++) {
-                ((int*)(d_out_chunk+gid))[i] = curr_acc[i];
-            }
+        // Write chunk counters back to global memory
+        for(i = 0; i < MapLambda::cardinal; i++) {
+            ((int*)(d_out_chunk + gid))[i] = chunk_acc[i];
+	}
 
-            // Syncthreads
-            // Then write back chunk info
-        }
+        // Write back chunk segment flag to global memory
+        *(int*)(chunk_flags + gid) = chunk_flag;
     }
 }
 

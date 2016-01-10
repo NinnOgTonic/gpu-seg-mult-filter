@@ -125,6 +125,48 @@ int testSeqMultiFilter(int* h_in, int* h_out, int num_elems) {
 }
 
 template<class ModN>
+int testSgmSeqMultiFilter(int* h_in, int* h_out, int num_elems) {
+    struct timeval t_start, t_end, t_diff;
+    unsigned long int elapsed;
+
+    gettimeofday(&t_start, NULL);
+
+    unsigned int accum[ModN::cardinal];
+    for(int i=0; i<ModN::cardinal; i++)
+        accum[i] = 0;
+
+    for(int i=0; i<num_elems; i++) {
+        int cur_el = h_in[i];
+        int ind_cls= ModN::apply(cur_el);
+        accum[ind_cls]++;
+    }
+
+    unsigned int tmp_cur = 0, tmp_next = 0;
+    for(int k=0; k<ModN::cardinal; k++) {
+        tmp_next += accum[k];
+        accum[k] = tmp_cur;
+        tmp_cur  = tmp_next;
+    }
+    unsigned int count[ModN::cardinal];
+    for(int i=0; i<ModN::cardinal; i++)
+        count[i] = 0;
+
+    for(int i=0; i<num_elems; i++) {
+        // for segmented scan exclusive test
+        int in_el   = h_in[i];
+        int ind_cls = ModN::apply(in_el);
+        h_out[count[ind_cls]+accum[ind_cls]] = in_el;
+        count[ind_cls]++;
+    }
+
+    gettimeofday(&t_end, NULL);
+    timeval_subtract(&t_diff, &t_end, &t_start);
+    elapsed = (t_diff.tv_sec*1e6+t_diff.tv_usec);
+    printf("Sequential Multi Filter runs in: %lu microsecs\n", elapsed);
+    return elapsed;
+}
+
+template<class ModN>
 int testMultiFilter(const unsigned int num_elems, const unsigned int num_hwd_thds) {
     unsigned int mem_size = num_elems * sizeof(int);
 
@@ -229,6 +271,135 @@ int testMultiFilter(const unsigned int num_elems, const unsigned int num_hwd_thd
     return 0;
 }
 
+/*
+template<class DISCR>
+typename DISCR::ExpType
+sgmMultiFilter( const unsigned int      num_elems,
+                const unsigned int      num_segments,
+                const unsigned int      num_hwd_thds,
+                typename DISCR::InType* d_in,  // device
+                unsigned int*     flags, // device
+                typename DISCR::InType* d_out  // device
+) {
+*/
+
+template<class ModN>
+int testSgmMultiFilter(const unsigned int num_elems, const unsigned int num_hwd_thds) {
+    unsigned int mem_size = num_elems * sizeof(int);
+
+    int* h_in    = (int*) malloc(mem_size);
+    int* h_out   = (int*) malloc(mem_size);
+
+    unsigned int segment_size = 20;
+    unsigned int num_segments = (int)ceil((float)num_elems / 20.0);
+    unsigned int* h_flags = (unsigned int*)malloc(mem_size);
+    h_flags[0] = 1;
+
+    { // init segments and flags
+        std::srand(33); // use current time as seed for random generator
+        for(unsigned int i=0; i<num_elems; i++) {
+            //h_in[i] = std::rand();
+            h_in[i] = i;
+            if(i % segment_size == 0) {
+                h_flags[i] = 1;
+            } else {
+                h_flags[i] = 0;
+            }
+        }
+    }
+
+    int *d_in, *d_out;
+    unsigned int *d_flags;
+    { // device allocation and copyin
+        cudaMalloc((void**)&d_in ,   mem_size);
+        cudaMalloc((void**)&d_out,   mem_size);
+        cudaMalloc((void**)&d_flags, mem_size);
+        cudaMemcpy(d_in, h_in, mem_size, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_flags, h_flags, mem_size, cudaMemcpyHostToDevice);
+        cudaThreadSynchronize();
+    }
+
+    /******************************************/
+    /**** Invoke MultiFilter Host Skeleton ****/
+    /******************************************/
+    typename ModN::ExpType filt_size = sgmMultiFilter<ModN>( num_elems, num_segments, num_hwd_thds, d_in, d_flags, d_out );
+    //MyInt4 filt_size = multiFilter<Mod4>( num_elems, num_hwd_thds, d_in, d_out );
+
+    /*
+
+    { // device-host copy of the result, and deallocation
+        cudaMemcpy(h_out, d_out, mem_size, cudaMemcpyDeviceToHost);
+        cudaThreadSynchronize();
+        cudaFree(d_in );
+        cudaFree(d_out);
+        cudaFree(d_flags);
+    }
+
+    { // validation
+        bool  success = true;
+        unsigned int accum[ModN::cardinal];
+        for(int i=0; i<ModN::cardinal; i++)
+            accum[i] = 0;
+
+        for(int i=0; i<num_elems; i++) {
+            int cur_el = h_in[i];
+            int ind_cls= ModN::apply(cur_el);
+            accum[ind_cls]++;
+        }
+
+        bool sizes_ok = true;
+        for(int i=0; i<ModN::cardinal; i++) {
+            int sz = ((int*)(&filt_size))[i];
+            if ( sz != accum[i] ) {
+                sizes_ok = false;
+                printf( "Invalid Size #%d, computed: %d, should be: %d!!! EXITING!\n\n", i, sz, accum[i]);
+            }
+        }
+        if(!sizes_ok) exit(0);
+
+
+
+
+        unsigned int tmp_cur = 0, tmp_next = 0;
+        for(int k=0; k<ModN::cardinal; k++) {
+            tmp_next += accum[k];
+            accum[k] = tmp_cur;
+            tmp_cur  = tmp_next;
+        }
+
+        unsigned int count[ModN::cardinal];
+        for(int i=0; i<ModN::cardinal; i++)
+            count[i] = 0;
+
+        for(int i=0; i<num_elems; i++) {
+            // for segmented scan exclusive test
+            int in_el   = h_in[i];
+            int ind_cls = ModN::apply(in_el);
+            int out_el  = h_out[count[ind_cls]+accum[ind_cls]];
+            if ( out_el != in_el) {
+                success = false;
+                printf("Multi Filter Violation: %d should be %d, eq class: %d, i: %d, h_out[i]: %d\n", out_el, in_el, ind_cls, i, h_out[i]);
+                if(i > 9) break;
+            }
+            count[ind_cls]++;
+        }
+        if(success) printf( "Multi Filter on %d elems +   VALID RESULT of partition sizes: (%d,%d,%d,%d)!\n\n",
+                            num_elems, filt_size.x, filt_size.y, filt_size.z, filt_size.w);
+        else        printf( "Multi Filter on %d elems + INVALID RESULT of partition sizes: (%d,%d,%d,%d)!\n\n",
+                            num_elems, filt_size.x, filt_size.y, filt_size.z, filt_size.w);
+    }
+
+    testSeqMultiFilter<ModN>(h_in, h_out, num_elems);
+
+    */
+
+    // cleanup memory
+    free(h_in );
+    free(h_out);
+    free(h_flags);
+
+    return 0;
+}
 
 int main(int argc, char** argv) {
     const unsigned int num_hwd_thds = 32*1024;
@@ -237,7 +408,9 @@ int main(int argc, char** argv) {
     //testClassicFilter(num_elems, num_hwd_thds, 1);
     //testClassicFilter(num_elems, num_hwd_thds, 2);
     //testClassicFilter(num_elems, num_hwd_thds, 3);
-    testMultiFilter<Mod4>(num_elems, num_hwd_thds);
+    //testMultiFilter<Mod4>(num_elems, num_hwd_thds);
+    //testSgmMultiFilter<Mod4>(num_elems, num_hwd_thds);
+    testSgmMultiFilter<Mod4>(2048, num_hwd_thds);
 
 #if 0
     const unsigned int mssp_list_size = 8353455;
