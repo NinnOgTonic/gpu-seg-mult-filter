@@ -626,14 +626,16 @@ sgmMapVctKernel(typename MapLambda::InType*     d_in,
     int seg_cnt             = (write_to_seg ? 1 : 0);
     int start_seg_num = -1;
 
+    // Calculate chunk flags for use in later kernels (2. segmented scan, ...)
     int chunk_flag;
     if(flags[gid]) {
         chunk_flag = 1;
-    } else if(gid >= d_height && seg_id[gid] != seg_id[gid - d_height]) {
+    } else if(gid > 0 && seg_id[gid] != seg_id[gid - 1]) {
         chunk_flag = 1;
     } else {
         chunk_flag = 0;
     }
+    printf("~~~~~ CHUNK FLAG IS: %d\n", chunk_flag);
 
     if(gid < d_height) {
         // Fix me: Do this globally for all chunk and segment accumulators
@@ -709,6 +711,7 @@ sgmMapVctKernel(typename MapLambda::InType*     d_in,
 
         // Write back chunk segment flag to global memory
         *(int*)(chunk_flags + gid) = chunk_flag;
+        printf("============= CHUNK_FLAGS OFFSET GID %d IS %d\n", gid, chunk_flag);
     }
 }
 

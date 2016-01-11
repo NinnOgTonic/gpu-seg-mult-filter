@@ -290,8 +290,8 @@ int testSgmMultiFilter(const unsigned int num_elems, const unsigned int num_hwd_
     int* h_in    = (int*) malloc(mem_size);
     int* h_out   = (int*) malloc(mem_size);
 
-    unsigned int segment_size = 20;
-    unsigned int num_segments = (int)ceil((float)num_elems / 20.0);
+    unsigned int segment_size = 40;
+    unsigned int num_segments = (int)ceil((float)num_elems / segment_size);
     unsigned int* h_flags = (unsigned int*)malloc(mem_size);
     h_flags[0] = 1;
 
