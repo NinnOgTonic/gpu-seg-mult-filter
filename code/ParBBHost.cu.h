@@ -224,7 +224,7 @@ void cuprintf4(MyInt4 *cudabuf, int size) {
     cudaMemcpy(hostbuf, cudabuf, size * sizeof(int) * 4, cudaMemcpyDeviceToHost);
     printf("\n");
     for(int i = 0; i < size; i++) {
-        printf("%d, %d, %d, %d\n", hostbuf[i].x, hostbuf[i].y, hostbuf[i].z, hostbuf[i].w);
+        printf("%3d:    %d, %d, %d, %d\n", i, hostbuf[i].x, hostbuf[i].y, hostbuf[i].z, hostbuf[i].w);
     }
     printf("\n");
 }
@@ -587,7 +587,7 @@ sgmMultiFilter( const unsigned int      num_elems,
     typename DISCR::ExpType *inds_res;
     typename DISCR::ExpType *seg_inds_res;
     unsigned int *seg_ids, *seg_ids_tr;
-    unsigned int *chunk_flags, *chunk_flags2;
+    unsigned int *chunk_flags;
     typename DISCR::ExpType  filt_size;
 
     cudaMalloc((void**)&d_tr_in, D_HEIGHT*D_WIDTH*sizeof(typename DISCR::InType));
@@ -599,9 +599,8 @@ sgmMultiFilter( const unsigned int      num_elems,
     cudaMalloc((void**)&seg_inds_res, 2*(num_segments*DISCR::cardinal*sizeof(int)));
     //cudaMalloc((void**)&seg_ids, num_elems*DISCR::cardinal*sizeof(int));
     //cudaMalloc((void**)&seg_ids_tr, num_elems*DISCR::cardinal*sizeof(int));
-    cudaMalloc((void**)&seg_ids,    D_HEIGHT*D_WIDTH*4*sizeof(int));
-    cudaMalloc((void**)&seg_ids_tr, D_HEIGHT*D_WIDTH*4*sizeof(int));
-    //cudaMalloc((void**)&chunk_flags2, 2*(D_HEIGHT*DISCR::cardinal*sizeof(int)));
+    cudaMalloc((void**)&seg_ids,    D_HEIGHT*D_WIDTH*sizeof(int)); // was *4. mistake, yes?
+    cudaMalloc((void**)&seg_ids_tr, D_HEIGHT*D_WIDTH*sizeof(int)); // was *4. mistake, yes?
 
     cudaMemset((void*)inds_res, 0, 2*(D_HEIGHT*DISCR::cardinal*sizeof(int)));
     cudaMemset((void*)cond_res, 0, D_HEIGHT*D_WIDTH*sizeof(int));
@@ -609,8 +608,8 @@ sgmMultiFilter( const unsigned int      num_elems,
 
     {
         const unsigned int block_size = 64; //TODO FIXME: Should we use this block size?
-        // Prepare seg_ids (flags scanned over to 00001111222333 format...)
-        // Note: It's 1-indexed. Values subtracted by 1 in kernel when necessary.
+        // Prepare seg_ids (flags scanned over to 11112222333444 format...)
+        // Note: It's 1-indexed. Values subtracted by 1 when necessary during use.
         scanInc<Add<unsigned int>, unsigned int>
             ((unsigned int)block_size, (unsigned long)num_elems, flags, seg_ids);
     }
@@ -667,7 +666,7 @@ sgmMultiFilter( const unsigned int      num_elems,
         const unsigned int num_blocks = (D_HEIGHT + block_size - 1) / block_size;
         const unsigned int SH_MEM_MAP  = (block_size + num_segments) * DISCR::cardinal * sizeof(int);
 
-        cudaMalloc((void**)&chunk_flags, block_size*sizeof(int));
+        cudaMalloc((void**)&chunk_flags, 2*block_size*sizeof(int));
 
         // map the condition
         sgmMapVctKernel<DISCR><<<num_blocks, block_size, SH_MEM_MAP>>>
@@ -687,17 +686,33 @@ sgmMultiFilter( const unsigned int      num_elems,
     printf("CHUNK_FLAGS ARE:\n");
     cuprintf((int*)chunk_flags, 64);
 
+    {
+        // TODO FIXME: This block size should be same as in map. Use a #define or something?
+        const unsigned int block_size = 64;
+        // Prepare chunk_ids (flags scanned over to 11112222333444 format...)
+        // Note: It's 1-indexed. Values subtracted by 1 when necessary during use.
+        scanInc<Add<unsigned int>, unsigned int>
+            ((unsigned int)block_size, (unsigned long)block_size, chunk_flags, chunk_flags + block_size);
+    }
+
+    printf("CHUNK_FLAGS IDS ARE:\n");
+    cuprintf((int*)(chunk_flags + 64), 64);
 
     gettimeofday(&t_med1, NULL);
 
     { // 3. the inclusive scan of the condition results
         const unsigned int block_size = 128;
         sgmScanInc<typename DISCR::AddExpType,typename DISCR::ExpType>
-                (block_size, D_HEIGHT, inds_res, (int*)chunk_flags, inds_res+D_HEIGHT);
+                (block_size, D_HEIGHT, inds_res, (int*)chunk_flags, inds_res + D_HEIGHT);
         //scanInc<typename DISCR::AddExpType,typename DISCR::ExpType>
-                //(block_size, num_segments, seg_inds_res, seg_inds_res+num_segments);
-        scanInc<typename DISCR::AddExpType,typename DISCR::ExpType>
-                (block_size, num_segments, seg_inds_res, seg_inds_res + num_segments);
+                //(block_size, num_segments, seg_inds_res, seg_inds_res + num_segments);
+
+        // TODO FIXME: Fix magic number 64. It's block size from when block_flags is scanned to 11122233 format.
+        unsigned int block_size_new = 64;
+        const unsigned int num_blocks = (D_HEIGHT + block_size_new - 1) / block_size_new;
+        const unsigned int num_chunks = (int)ceil((float)num_elems / (float)D_WIDTH);
+        mapAggregateCounters<DISCR><<<num_blocks, block_size_new>>>
+                (seg_inds_res, seg_ids, chunk_flags, inds_res + D_HEIGHT, D_WIDTH, num_chunks);
 
         cudaMemcpy( &filt_size, &inds_res[2*D_HEIGHT - 1],
                     DISCR::cardinal*sizeof(int), cudaMemcpyDeviceToHost );
@@ -705,11 +720,14 @@ sgmMultiFilter( const unsigned int      num_elems,
         filt_size.selSub(DISCR::cardinal, PADD);
     }
 
-    printf("SEG_INDS_RES (SEGMENT COUNTERS, %p) AFTER SCAN KERNEL CALL IS:\n", seg_inds_res + num_segments);
-    cuprintf4(seg_inds_res + num_segments, num_segments);
+    printf("SEG_INDS_RES (AGGREGATED COUNTERS, %p) AFTER SCAN KERNEL CALL IS:\n", seg_inds_res + num_segments);
+    cuprintf4(seg_inds_res, num_segments);
+    //cuprintf4(seg_inds_res + num_segments, num_segments);
     printf("INDS_RES (CHUNK COUNTERS) AFTER SCAN KERNEL IS:\n");
     cuprintf4(inds_res + D_HEIGHT, D_HEIGHT);
     printf("NUM SEGMENTS IS: %d\n", num_segments);
+
+    printf("FILT_SIZE IS: %d, %d, %d, %d\n", filt_size.x, filt_size.y, filt_size.z, filt_size.w);
 
     cudaThreadSynchronize();
     gettimeofday(&t_med2, NULL);

@@ -36,6 +36,13 @@ class MyInt4 {
         x = i4.x; y = i4.y; z = i4.z; w = i4.w;
         return *this;
     }
+    volatile __device__ __host__ inline MyInt4& operator+=(const MyInt4& i4) volatile {
+        x += i4.x; y += i4.y; z += i4.z; w += i4.w;
+    }
+    /*volatile __device__ __host__ inline MyInt4& operator+=(const MyInt4& i4) volatile {
+        x += i4.x; y += i4.y; z += i4.z; w += i4.w;
+        return *this;
+    }*/
     __device__ __host__ inline int selInc(int i) {
         return (i == 0) ? ++x :
                (i == 1) ? ++y :
@@ -715,6 +722,29 @@ sgmMapVctKernel(typename MapLambda::InType*     d_in,
     }
 }
 
+template<class MapLambda>
+__global__ void
+mapAggregateCounters(typename MapLambda::ExpType *segment_counters,
+                     const unsigned int *segment_ids,
+                     const unsigned int *chunk_flags,
+                     typename MapLambda::ExpType *chunk_counters,
+                     const unsigned int chunk_size,
+                     const unsigned int num_chunks
+) {
+    unsigned int chunk_id = blockIdx.x*blockDim.x + threadIdx.x;
+    unsigned int segment_id = segment_ids[chunk_id * chunk_size] - 1;
+
+    //typename MapLambda::ExpType a = segment_counters[segment_id];
+    //typename MapLambda::ExpType b = chunk_counters[chunk_id];
+    //a += b;
+
+    if(chunk_id == num_chunks - 1 || chunk_flags[chunk_id + 1] == 1) {
+        __syncthreads();
+        printf("CHUNK ID: %d, ADDING SEGMENT COUNTER %d TO CHUNK COUNTER %d: %d + %d\n", chunk_id, segment_id, chunk_id, segment_counters[segment_id].x, chunk_counters[chunk_id].x);
+        __syncthreads();
+        segment_counters[segment_id] += chunk_counters[chunk_id];
+    }
+}
 
 /********************/
 /*** WRITE Kernel ***/
