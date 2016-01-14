@@ -582,36 +582,34 @@ sgmMultiFilter( const unsigned int      num_elems,
     unsigned long int elapsed;
 
     typename DISCR::InType *d_tr_in;
-    int *cond_res;
+    int *cond_results;
     unsigned int* flags_tr;
-    typename DISCR::ExpType *inds_res;
-    typename DISCR::ExpType *seg_inds_res;
-    unsigned int *seg_ids, *seg_ids_tr;
+    typename DISCR::ExpType *chunk_counters;
+    typename DISCR::ExpType *segment_counters;
+    unsigned int *segment_ids, *segment_ids_tr;
     unsigned int *chunk_flags;
     typename DISCR::ExpType  filt_size;
 
-    cudaMalloc((void**)&d_tr_in, D_HEIGHT*D_WIDTH*sizeof(typename DISCR::InType));
-    cudaMalloc((void**)&cond_res, D_HEIGHT*D_WIDTH*sizeof(int));
-    cudaMalloc((void**)&flags_tr, D_HEIGHT*D_WIDTH*sizeof(int));
+    cudaMalloc((void**)&d_tr_in,      D_HEIGHT * D_WIDTH * sizeof(typename DISCR::InType));
+    cudaMalloc((void**)&cond_results, D_HEIGHT * D_WIDTH * sizeof(int));
+    cudaMalloc((void**)&flags_tr,     D_HEIGHT * D_WIDTH * sizeof(int));
 
     // Shouldn't DISCR::cardinal*sizeof(int) be sizeof(DISCR::ExpType)?
-    cudaMalloc((void**)&inds_res, 2*(D_HEIGHT*DISCR::cardinal*sizeof(int)));
-    cudaMalloc((void**)&seg_inds_res, 2*(num_segments*DISCR::cardinal*sizeof(int)));
-    //cudaMalloc((void**)&seg_ids, num_elems*DISCR::cardinal*sizeof(int));
-    //cudaMalloc((void**)&seg_ids_tr, num_elems*DISCR::cardinal*sizeof(int));
-    cudaMalloc((void**)&seg_ids,    D_HEIGHT*D_WIDTH*sizeof(int)); // was *4. mistake, yes?
-    cudaMalloc((void**)&seg_ids_tr, D_HEIGHT*D_WIDTH*sizeof(int)); // was *4. mistake, yes?
+    cudaMalloc((void**)&chunk_counters,   2 * (D_HEIGHT     * DISCR::cardinal * sizeof(int)));
+    cudaMalloc((void**)&segment_counters, 2 * (num_segments * DISCR::cardinal * sizeof(int)));
+    cudaMalloc((void**)&segment_ids,    D_HEIGHT * D_WIDTH * sizeof(int)); // was *4. mistake, yes?
+    cudaMalloc((void**)&segment_ids_tr, D_HEIGHT * D_WIDTH * sizeof(int)); // was *4. mistake, yes?
 
-    cudaMemset((void*)inds_res, 0, 2*(D_HEIGHT*DISCR::cardinal*sizeof(int)));
-    cudaMemset((void*)cond_res, 0, D_HEIGHT*D_WIDTH*sizeof(int));
-    cudaMemset((void*)seg_inds_res, 0, 2*(num_segments*DISCR::cardinal*sizeof(int)));
+    cudaMemset((void*)chunk_counters, 0, 2 * (D_HEIGHT * DISCR::cardinal * sizeof(int)));
+    cudaMemset((void*)cond_results, 0, D_HEIGHT * D_WIDTH * sizeof(int));
+    cudaMemset((void*)segment_counters, 0, 2 * (num_segments * DISCR::cardinal * sizeof(int)));
 
     {
         const unsigned int block_size = 64; //TODO FIXME: Should we use this block size?
-        // Prepare seg_ids (flags scanned over to 11112222333444 format...)
+        // Prepare segment_ids (flags scanned over to 11112222333444 format...)
         // Note: It's 1-indexed. Values subtracted by 1 when necessary during use.
         scanInc<Add<unsigned int>, unsigned int>
-            ((unsigned int)block_size, (unsigned long)num_elems, flags, seg_ids);
+            ((unsigned int)block_size, (unsigned long)num_elems, flags, segment_ids);
     }
 
     cudaThreadSynchronize();
@@ -628,7 +626,7 @@ sgmMultiFilter( const unsigned int      num_elems,
        transposePad<unsigned int, 16>
             (flags, flags_tr, D_HEIGHT, D_WIDTH, num_elems, 0);
        transposePad<unsigned int, 16>
-            (seg_ids, seg_ids_tr, D_HEIGHT, D_WIDTH, num_elems, 0);
+            (segment_ids, segment_ids_tr, D_HEIGHT, D_WIDTH, num_elems, 0);
     }
     //printf("D_HEIGHT: %d, D_WIDTH: %d, num_elems: %d, padelwat: %d\n", D_HEIGHT, D_WIDTH, num_elems, DISCR::padelm);
     // D_HEIGHT: 131136, D_WIDTH: 384, num_elems: 50332001, padelwat: 3
@@ -639,9 +637,9 @@ sgmMultiFilter( const unsigned int      num_elems,
     //printf("FLAGS ARE:\n");
     //cuprintf((int*)flags, 1024);
     printf("SEG IDS ARE (num_elems: %d):\n", num_elems);
-    cuprintf((int*)seg_ids, 32*64);
+    cuprintf((int*)segment_ids, 32*64);
     printf("SEG IDS_TR ARE (num_elems: %d):\n", num_elems);
-    cuprintf((int*)seg_ids_tr, 32*64);
+    cuprintf((int*)segment_ids_tr, 32*64);
     printf("FLAGS ARE (num_elems: %d):\n", num_elems);
     cuprintf((int*)flags, 32*64);
     printf("FLAGS_TR ARE (num_elems: %d):\n", num_elems);
@@ -651,13 +649,13 @@ sgmMultiFilter( const unsigned int      num_elems,
     cuprintf(d_tr_in, 128);
 
     //printf("SEG_IDS_TR IS:\n");
-    //cuprintf((int*)seg_ids_tr, 128);
+    //cuprintf((int*)segment_ids_tr, 128);
 
     printf("COND_RES BEFORE KERNEL IS:\n");
-    cuprintf(cond_res, 128);
+    cuprintf(cond_results, 128);
 
     printf("SEG_INDS_RES (SEGMENT COUNTERS) BEFORE KERNEL CALL IS (num segments: %d):\n", num_segments);
-    cuprintf4(seg_inds_res, 32);
+    cuprintf4(segment_counters, 32);
 
     gettimeofday(&t_med0, NULL);
 
@@ -670,16 +668,16 @@ sgmMultiFilter( const unsigned int      num_elems,
 
         // map the condition
         sgmMapVctKernel<DISCR><<<num_blocks, block_size, SH_MEM_MAP>>>
-                (d_tr_in, cond_res, inds_res, seg_inds_res, flags_tr, seg_ids_tr, chunk_flags, D_HEIGHT, D_WIDTH);
+                (d_tr_in, cond_results, chunk_counters, segment_counters, flags_tr, segment_ids_tr, chunk_flags, D_HEIGHT, D_WIDTH);
     }
     cudaThreadSynchronize();
 
-    printf("SEG_INDS_RES (SEGMENT COUNTERS, %p) AFTER KERNEL CALL IS:\n", seg_inds_res);
-    cuprintf4(seg_inds_res, num_segments);
+    printf("SEG_INDS_RES (SEGMENT COUNTERS, %p) AFTER KERNEL CALL IS:\n", segment_counters);
+    cuprintf4(segment_counters, num_segments);
     printf("COND_RES IS:\n");
-    cuprintf(cond_res, 512);
+    cuprintf(cond_results, 512);
     printf("INDS_RES (CHUNK COUNTERS) IS:\n");
-    cuprintf4(inds_res, D_HEIGHT);
+    cuprintf4(chunk_counters, D_HEIGHT);
 
     const unsigned int block_size = 64; //256;
     const unsigned int num_blocks = (D_HEIGHT + block_size - 1) / block_size;
@@ -703,28 +701,28 @@ sgmMultiFilter( const unsigned int      num_elems,
     { // 3. the inclusive scan of the condition results
         const unsigned int block_size = 128;
         sgmScanInc<typename DISCR::AddExpType,typename DISCR::ExpType>
-                (block_size, D_HEIGHT, inds_res, (int*)chunk_flags, inds_res + D_HEIGHT);
+                (block_size, D_HEIGHT, chunk_counters, (int*)chunk_flags, chunk_counters + D_HEIGHT);
         //scanInc<typename DISCR::AddExpType,typename DISCR::ExpType>
-                //(block_size, num_segments, seg_inds_res, seg_inds_res + num_segments);
+                //(block_size, num_segments, segment_counters, segment_counters + num_segments);
 
         // TODO FIXME: Fix magic number 64. It's block size from when block_flags is scanned to 11122233 format.
         unsigned int block_size_new = 64;
         const unsigned int num_blocks = (D_HEIGHT + block_size_new - 1) / block_size_new;
         const unsigned int num_chunks = (int)ceil((float)num_elems / (float)D_WIDTH);
         mapAggregateCounters<DISCR><<<num_blocks, block_size_new>>>
-                (seg_inds_res, seg_ids, chunk_flags, inds_res + D_HEIGHT, D_WIDTH, num_chunks);
+                (segment_counters, segment_ids, chunk_flags, chunk_counters + D_HEIGHT, D_WIDTH, num_chunks);
 
-        cudaMemcpy( &filt_size, &inds_res[2*D_HEIGHT - 1],
+        cudaMemcpy( &filt_size, &chunk_counters[2*D_HEIGHT - 1],
                     DISCR::cardinal*sizeof(int), cudaMemcpyDeviceToHost );
 
         filt_size.selSub(DISCR::cardinal, PADD);
     }
 
-    printf("SEG_INDS_RES (AGGREGATED COUNTERS, %p) AFTER SCAN KERNEL CALL IS:\n", seg_inds_res + num_segments);
-    cuprintf4(seg_inds_res, num_segments);
-    //cuprintf4(seg_inds_res + num_segments, num_segments);
+    printf("SEG_INDS_RES (AGGREGATED COUNTERS, %p) AFTER SCAN KERNEL CALL IS:\n", segment_counters + num_segments);
+    cuprintf4(segment_counters, num_segments);
+    //cuprintf4(segment_counters + num_segments, num_segments);
     printf("INDS_RES (CHUNK COUNTERS) AFTER SCAN KERNEL IS:\n");
-    cuprintf4(inds_res + D_HEIGHT, D_HEIGHT);
+    cuprintf4(chunk_counters + D_HEIGHT, D_HEIGHT);
     printf("NUM SEGMENTS IS: %d\n", num_segments);
 
     printf("FILT_SIZE IS: %d, %d, %d, %d\n", filt_size.x, filt_size.y, filt_size.z, filt_size.w);
@@ -744,7 +742,7 @@ sgmMultiFilter( const unsigned int      num_elems,
         dim3 block(32, 32, 1);
         dim3 grid ( D_HEIGHT/32, 1, 1);
         writeMultiKernel<DISCR><<<grid, block, SH_MEM_SIZE>>>
-            (d_tr_in, cond_res, inds_res+D_HEIGHT, d_out, D_HEIGHT, num_elems, SEQ_CHUNK);
+            (d_tr_in, cond_results, chunk_counters+D_HEIGHT, d_out, D_HEIGHT, num_elems, SEQ_CHUNK);
     }
     cudaThreadSynchronize();
     gettimeofday(&t_end, NULL);
@@ -773,19 +771,17 @@ sgmMultiFilter( const unsigned int      num_elems,
 
     // free resources
     cudaFree(d_tr_in);
-    cudaFree(cond_res);
+    cudaFree(cond_results);
     cudaFree(flags_tr);
 
-    cudaFree(inds_res);
-    cudaFree(seg_inds_res);
-    cudaFree(seg_ids);
-    cudaFree(seg_ids_tr);
+    cudaFree(chunk_counters);
+    cudaFree(segment_counters);
+    cudaFree(segment_ids);
+    cudaFree(segment_ids_tr);
 
     cudaFree(chunk_flags);
-    //cudaFree(chunk_flags2);
 
     return filt_size;
-
 }
 
 #endif //PAR_BB_HOST
