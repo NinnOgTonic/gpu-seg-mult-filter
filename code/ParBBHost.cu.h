@@ -519,7 +519,7 @@ multiFilter(    const unsigned int      num_elems,
         // By construction: D_WIDTH  is guaranteed to be a multiple of 32 AND
         //                  D_HEIGHT is guaranteed to be a multiple of 64 !!!
         const unsigned int SEQ_CHUNK   = D_WIDTH / 32;
-        printf("SEQ_CHUNK: %u, DISCRcaqrd: %u\n\n", SEQ_CHUNK, DISCR::cardinal);
+        printf("SEQ_CHUNK: %u, DISCRcard: %u\n\n", SEQ_CHUNK, DISCR::cardinal);
         const unsigned int SH_MEM_SIZE = 1024 * sizeof(int) * SEQ_CHUNK + 32*33*sizeof(int); // PUT CORRECT TYPES!
 
         dim3 block(32, 32, 1);
@@ -730,7 +730,6 @@ sgmMultiFilter( const unsigned int      num_elems,
     cudaThreadSynchronize();
     gettimeofday(&t_med2, NULL);
 
-    /*
 
     { // 4. the write to global memory part
         // By construction: D_WIDTH  is guaranteed to be a multiple of 32 AND
@@ -742,10 +741,12 @@ sgmMultiFilter( const unsigned int      num_elems,
         dim3 block(32, 32, 1);
         dim3 grid ( D_HEIGHT/32, 1, 1);
         writeMultiKernel<DISCR><<<grid, block, SH_MEM_SIZE>>>
-            (d_tr_in, cond_results, chunk_counters+D_HEIGHT, d_out, D_HEIGHT, num_elems, SEQ_CHUNK);
+            (d_tr_in, cond_results, chunk_counters + D_HEIGHT, d_out, D_HEIGHT, num_elems, SEQ_CHUNK);
     }
     cudaThreadSynchronize();
     gettimeofday(&t_end, NULL);
+
+    /*
 
     timeval_subtract(&t_diff, &t_end, &t_start);
     elapsed = (t_diff.tv_sec*1e6+t_diff.tv_usec);

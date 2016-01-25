@@ -647,14 +647,6 @@ sgmMapVctKernel(typename MapLambda::InType*     d_in,
         // Fix me: Do this globally for all chunk and segment accumulators
         for(i = 0; i < MapLambda::cardinal; i++) {
             chunk_acc[i] = MapLambda::identity();
-            /*
-            // This is already handled in for loop below?
-            if(chunk_flag) {
-	        segment_acc[i] = MapLambda::identity();
-	        //segment_acc[i] = 1;
-                printf("FOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOO: &segment_acc[i]: %p\n", &segment_acc[i]);
-	    }
-            */
         }
 
         // TODO: This will index gid's from 0 to 2048. What if num_elems < 2048? Fix with padding?
@@ -985,6 +977,111 @@ writeMultiKernel(   typename OP:: InType* d_in,  int* cond_res,
     }
 }
 
+/**
+ * FIXME TODO: This is copied from sgmWriteMultiKernel. WITH_ARRAY options
+ * have been removed for now. Perhaps these needs to be re-implemented later.
+ * 
+ * The use of this kernel should guarantee that the blocks are full;
+ * this is achieved by padding in the host. However the result array
+ * is not considered padded (parameter), hence orig_size is tested
+ * in the last stage (the update to global from shared memory) so
+ * that we do not write out of bounds.
+ * If WITH_ARRAY is defined, then accumulator's representation is
+ *    an int[2/4/8] local array, hence in L1 => requires replay instrs
+ *    OTHERWISE: an MyInt2/4/8 => hold in registers, but leads to divergence.
+ * MyInt4 representation seems to be a bit better than int[4].
+ */
+//#define WITH_ARRAY
+template<class OP>
+__global__ void
+sgmWriteMultiKernel(   typename OP:: InType* d_in,  int* cond_res,
+                    typename OP::ExpType* perm_chunk,
+                    typename OP:: InType* d_out,
+                    const unsigned int d_height,
+                    const unsigned int orig_size,
+                    const          int CHUNK
+) {
+    typedef typename OP:: InType T;
+    typedef typename OP::ExpType M;
+
+    extern __shared__ char gen_sh_mem[];
+    volatile M* ind_sh_mem = (volatile M*) gen_sh_mem;
+    volatile T* elm_sh_mem = (volatile T*) gen_sh_mem;
+    int k;
+//    int col = blockIdx.x*blockDim.x + threadIdx.x;
+
+    M acc0;
+
+    // 1. vertically scan sequentially CHUNK elements, result in acc0
+    unsigned int tmp_id = blockIdx.x*blockDim.x + threadIdx.y*CHUNK*d_height + threadIdx.x;
+
+//    if(col < d_height)
+    for(k = 0; k < CHUNK; k++, tmp_id+=d_height) {
+        acc0.selInc(cond_res[tmp_id]);
+    }
+
+    {
+        ind_sh_mem[threadIdx.x*(blockDim.y+1)+threadIdx.y] = acc0;
+    }
+    __syncthreads();
+    // 2. vertical warp-scan of the results from the seq scan step, put result back in acc0
+    scanIncWarp<typename OP::AddExpType,M>(ind_sh_mem + threadIdx.y*(blockDim.x+1), threadIdx.x);
+    __syncthreads();
+    {
+        if (threadIdx.y > 0) {
+            acc0.set(ind_sh_mem[threadIdx.x*(blockDim.y+1)+threadIdx.y-1]);
+        } else {
+            acc0.zeroOut();
+        }
+    }
+
+    int  arrtmp[OP::cardinal];
+//    if(col < d_height)
+    { // 3. adjust acc0 to reflect block-level indices of the multi-index.
+        tmp_id = blockIdx.x*blockDim.x;
+        OP::incWithAccumDiff(acc0, arrtmp, perm_chunk + tmp_id - 1,
+                             perm_chunk + tmp_id + threadIdx.x - 1,
+                             perm_chunk + min(tmp_id+blockDim.x,d_height) - 1 );
+
+    }
+    __syncthreads();
+
+    // 4. performs an input-array traversal in which the elements are
+    //    recorded in shared mem (using the block-adjusted indices of acc0)
+    tmp_id = blockIdx.x*blockDim.x + threadIdx.y*CHUNK*d_height + threadIdx.x;
+//    if (col < d_height)
+    for(int k = 0; k < CHUNK; k++, tmp_id+=d_height) {
+        int iind = cond_res[tmp_id];
+        int shind = acc0.selInc(iind);
+        elm_sh_mem[myHash(shind-1)] = d_in[tmp_id];
+    }
+    __syncthreads();
+
+    // 6. Finally, the shared memory is traverse in order and
+    //    and the filtered array is written to global memory;
+    //    Since all the elements of an equiv-class are contiguous
+    //    in shared memory (and global memory), the uncoalesced
+    //    writes are minimized.
+    {
+        int* blk_vlst= ((int*)(perm_chunk + d_height - 1)); // very last (row) scan result
+        k   = threadIdx.y*blockDim.x + threadIdx.x;
+        unsigned int total_len = blockDim.x*blockDim.y*CHUNK;
+        for( ; k < total_len; k+=blockDim.x*blockDim.y) {
+            unsigned int glb_ind = 0, loc_ind = k;
+            tmp_id = 0;
+            while( loc_ind >= arrtmp[tmp_id] && tmp_id < OP::cardinal) {
+                glb_ind += blk_vlst[tmp_id];
+                loc_ind -= arrtmp[tmp_id];
+                tmp_id++;
+            }
+
+            tmp_id = glb_ind + loc_ind + (blockIdx.x > 0) *
+                     ((int*) (perm_chunk + blockIdx.x*blockDim.x - 1))[tmp_id]; // blk_beg;
+            if(tmp_id < orig_size)
+                d_out[tmp_id] = elm_sh_mem[myHash(k)];
+        }
+    }
+}
 
 /**
  * Needs separate index-value shared memories, eg (8+1)*block size!
