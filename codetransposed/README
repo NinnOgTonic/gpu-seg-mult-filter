@@ -1,0 +1,3 @@
+Simply compile with:
+    $ nvcc -O3 MainTests.cu -arch sm_20
+nvcc -O3 MainTests.cu -arch sm_20 && ./a.out 
